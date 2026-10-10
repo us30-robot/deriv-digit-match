@@ -1,346 +1,424 @@
 
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta http-equiv="Content-Language" content="en">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Digit Match Signal Provider</title>
+
 <style>
-:root{--bg:#080b12;--card:#111722;--line:#252e3c;--text:#f4f7fb;--muted:#8f9bad;--green:#25d366;--red:#ff4d5f}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}
-.wrap{max-width:430px;margin:auto;padding:18px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:14px}
-h1{font-size:23px;text-align:center;margin:4px 0 18px}
-.status{text-align:center;color:var(--muted);font-size:14px;margin-bottom:14px}
-button{width:100%;border:0;border-radius:12px;padding:15px;font-size:16px;font-weight:700;margin-top:9px;cursor:pointer}
-.connect{background:#fff;color:#111}
-.start{background:var(--green);color:#07100a}
-.stop{background:var(--red);color:white}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.box{background:#0b1018;border:1px solid var(--line);border-radius:12px;padding:14px}
-.label{font-size:12px;color:var(--muted)}
-.value{font-size:25px;font-weight:800;margin-top:5px}
-.signal{text-align:center;border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:12px}
-.signal strong{display:block;font-size:24px}
-.signal small{display:block;color:var(--muted);margin-top:7px}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
-.stat{background:#0b1018;border-radius:12px;padding:12px}
-.stat b{display:block;font-size:21px}
-.stat span{font-size:11px;color:var(--muted)}
-select{width:100%;background:#0b1018;color:white;border:1px solid var(--line);padding:12px;border-radius:10px;margin-top:8px}
-.note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:12px}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#777;margin-right:6px}
-.live{background:var(--green)}
+:root {
+  --bg: #080b12;
+  --card: #111722;
+  --line: #252e3c;
+  --text: #f4f7fb;
+  --muted: #8f9bad;
+  --green: #25d366;
+  --red: #ff4d5f;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, sans-serif;
+}
+.wrap { max-width: 430px; margin: auto; padding: 18px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+h1 { font-size: 23px; text-align: center; margin: 4px 0 18px; }
+.status { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+button {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 15px;
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 9px;
+  cursor: pointer;
+}
+.connect { background: white; color: #111; }
+.start { background: var(--green); color: #07100a; }
+.stop { background: var(--red); color: white; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.box {
+  background: #0b1018;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+}
+.label { font-size: 12px; color: var(--muted); }
+.value { font-size: 25px; font-weight: 800; margin-top: 5px; }
+.signal {
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  margin-top: 12px;
+}
+.signal strong { display: block; font-size: 24px; }
+.signal small { display: block; color: var(--muted); margin-top: 7px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.stat { background: #0b1018; border-radius: 12px; padding: 12px; }
+.stat b { display: block; font-size: 21px; }
+.stat span { font-size: 11px; color: var(--muted); }
+select {
+  width: 100%;
+  background: #0b1018;
+  color: white;
+  border: 1px solid var(--line);
+  padding: 12px;
+  border-radius: 10px;
+  margin-top: 8px;
+}
+.note { font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: 12px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #777; margin-right: 6px; }
+.live { background: var(--green); }
 </style>
 </head>
+
 <body>
 <div class="wrap">
 
-<div class="card">
-<h1>Digit Match</h1>
-<div class="status">
-<span id="dot" class="dot"></span>
-<span id="status">Not connected</span>
-</div>
-<button class="connect" id="connect">CONNECT DERIV ACCOUNT</button>
-</div>
+  <div class="card">
+    <h1>Digit Match</h1>
+    <div class="status">
+      <span id="dot" class="dot"></span>
+      <span id="status">Not Connected</span>
+    </div>
+    <button class="connect" id="connect">CONNECT DERIV ACCOUNT</button>
+  </div>
 
-<div class="card">
-<div class="grid">
-<div class="box">
-<div class="label">Target Digit</div>
-<div class="value" id="digit">—</div>
-</div>
-<div class="box">
-<div class="label">Signal Confidence</div>
-<div class="value" id="confidence">—</div>
-</div>
-</div>
+  <div class="card">
+    <div class="grid">
+      <div class="box">
+        <div class="label">Target Digit</div>
+        <div class="value" id="digit">—</div>
+      </div>
+      <div class="box">
+        <div class="label">Signal Confidence</div>
+        <div class="value" id="confidence">—</div>
+      </div>
+    </div>
 
-<div class="signal">
-<strong id="signal">WAITING FOR SIGNAL</strong>
-<small id="reason">Connect to collect live ticks.</small>
-</div>
+    <div class="signal">
+      <strong id="signal">WAITING FOR SIGNAL</strong>
+      <small id="reason">Connect to Deriv to receive live market ticks.</small>
+    </div>
 
-<button class="start" id="start">START SCANNER</button>
-<button class="stop" id="stop">STOP SCANNER</button>
-</div>
+    <button class="start" id="start">START SCANNER</button>
+    <button class="stop" id="stop">STOP SCANNER</button>
+  </div>
 
-<div class="card">
-<div class="stats">
-<div class="stat"><b id="wins">0</b><span>Wins</span></div>
-<div class="stat"><b id="losses">0</b><span>Losses</span></div>
-<div class="stat"><b id="trades">0</b><span>Signals Tested</span></div>
-</div>
+  <div class="card">
+    <div class="stats">
+      <div class="stat"><b id="wins">0</b><span>Wins</span></div>
+      <div class="stat"><b id="losses">0</b><span>Losses</span></div>
+      <div class="stat"><b id="trades">0</b><span>Signals Tested</span></div>
+    </div>
 
-<div style="margin-top:14px">
-<div class="label">Market</div>
-<select id="symbol">
-<option value="1HZ100V">Volatility 100 (1s)</option>
-<option value="1HZ75V">Volatility 75 (1s)</option>
-<option value="1HZ50V">Volatility 50 (1s)</option>
-<option value="R_100">Volatility 100</option>
-<option value="R_75">Volatility 75</option>
-<option value="R_50">Volatility 50</option>
-</select>
-</div>
+    <div style="margin-top:14px">
+      <div class="label">Select Market</div>
+      <select id="symbol">
+        <option value="1HZ100V">Volatility 100 (1 Second)</option>
+        <option value="1HZ75V">Volatility 75 (1 Second)</option>
+        <option value="1HZ50V">Volatility 50 (1 Second)</option>
+        <option value="R_100">Volatility 100</option>
+        <option value="R_75">Volatility 75</option>
+        <option value="R_50">Volatility 50</option>
+      </select>
+    </div>
 
-<div class="note">
-This app reads live public market ticks and tests each signal against the next tick. It does not place real trades or authenticate a trading account. The confidence score is a filtering score, not a guaranteed probability of winning. If the connection fails inside an embedded preview, open this HTML file in a regular browser and check your network connection.
-</div>
-</div>
+    <div class="note">
+      LANGUAGE: ENGLISH.
+      This application receives public market ticks and tests signals against the next tick. It does not execute real trades or log in to your trading account. The confidence score is an analysis filter, not a guaranteed probability of winning. If the connection fails, check your internet connection and open this page in a regular browser.
+    </div>
+  </div>
 
 </div>
 
 <script>
-const APP_ID="34w4UNfk1crTsZL1SGg9c";
-const socketUrl=()=>`wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`;
+"use strict";
 
-let ws=null;
-let running=false;
-let connected=false;
-let ticks=[];
-let pending=null;
-let lastSignalAt=-999;
-let wins=0,losses=0,trades=0;
+const APP_ID = "34w4UNfk1crTsZL1SGg9c";
 
-const $=id=>document.getElementById(id);
+const socketUrl = () =>
+  `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`;
 
-function setStatus(message,isLive=false){
-$("status").textContent=message;
-$("dot").className="dot"+(isLive?" live":"");
+let ws = null;
+let running = false;
+let connected = false;
+let ticks = [];
+let pending = null;
+let lastSignalAt = -999;
+let wins = 0;
+let losses = 0;
+let trades = 0;
+
+const $ = id => document.getElementById(id);
+
+function setStatus(message, isLive = false) {
+  $("status").textContent = message;
+  $("dot").className = "dot" + (isLive ? " live" : "");
 }
 
-function getDigit(quote){
-const match=String(quote).match(/(\d)$/);
-return match?Number(match[1]):null;
+function getDigit(quote) {
+  const match = String(quote).match(/(\d)$/);
+  return match ? Number(match[1]) : null;
 }
 
-function updateStats(){
-$("wins").textContent=wins;
-$("losses").textContent=losses;
-$("trades").textContent=trades;
+function updateStats() {
+  $("wins").textContent = wins;
+  $("losses").textContent = losses;
+  $("trades").textContent = trades;
 }
 
-function clearSignal(){
-$("digit").textContent="—";
-$("confidence").textContent="—";
-$("signal").textContent="WAITING FOR SIGNAL";
-$("reason").textContent="Waiting for enough live ticks…";
+function clearSignal() {
+  $("digit").textContent = "—";
+  $("confidence").textContent = "—";
+  $("signal").textContent = "WAITING FOR SIGNAL";
+  $("reason").textContent = "Waiting for sufficient market data.";
 }
 
-function connect(){
-if(ws&&(ws.readyState===WebSocket.CONNECTING||ws.readyState===WebSocket.OPEN))return;
+function connect() {
+  if (
+    ws &&
+    (ws.readyState === WebSocket.CONNECTING ||
+     ws.readyState === WebSocket.OPEN)
+  ) {
+    return;
+  }
 
-setStatus("Connecting to Deriv…");
-ws=new WebSocket(socketUrl());
+  setStatus("Connecting to Deriv...");
+  ws = new WebSocket(socketUrl());
 
-ws.onopen=()=>{
-connected=true;
-setStatus("Live ticks connected",true);
-const symbol=$("symbol").value;
-ws.send(JSON.stringify({
-ticks_history:symbol,
-count:250,
-end:"latest",
-style:"ticks"
-}));
-ws.send(JSON.stringify({
-ticks:symbol,
-subscribe:1
-}));
-};
+  ws.onopen = () => {
+    connected = true;
+    setStatus("Connected — receiving live ticks", true);
 
-ws.onmessage=event=>{
-let data;
+    const symbol = $("symbol").value;
 
-try{
-data=JSON.parse(event.data);
-}catch{
-setStatus("Received an unreadable server response");
-return;
+    ws.send(JSON.stringify({
+      ticks_history: symbol,
+      count: 250,
+      end: "latest",
+      style: "ticks"
+    }));
+
+    ws.send(JSON.stringify({
+      ticks: symbol,
+      subscribe: 1
+    }));
+  };
+
+  ws.onmessage = event => {
+    let data;
+
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      setStatus("Error: Unable to read the server response.");
+      return;
+    }
+
+    if (data.error) {
+      setStatus("Connection Error: " + data.error.message);
+      return;
+    }
+
+    if (data.msg_type === "history") {
+      ticks = (data.history?.prices || [])
+        .map(getDigit)
+        .filter(digit => digit !== null)
+        .slice(-250);
+    }
+
+    if (data.msg_type === "tick") {
+      const digit = getDigit(data.tick.quote);
+      if (digit !== null) onTick(digit);
+    }
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    setStatus("Disconnected from Deriv.");
+  };
+
+  ws.onerror = () => {
+    setStatus("Connection Error: Check your internet connection.");
+  };
 }
 
-if(data.error){
-setStatus("Connection error: "+data.error.message);
-return;
+function analyse(history) {
+  if (history.length < 100) return null;
+
+  const frequency = Array(10).fill(0);
+  const recent = Array(10).fill(0);
+  const transitions = Array(10).fill(0);
+  const from = Math.max(0, history.length - 120);
+
+  for (let i = from; i < history.length; i++) {
+    const age = history.length - 1 - i;
+    frequency[history[i]] += Math.exp(-age / 45);
+  }
+
+  for (const digit of history.slice(-30)) {
+    recent[digit]++;
+  }
+
+  let total = frequency.reduce((sum, value) => sum + value, 0);
+  const frequencyProbability = frequency.map(value => value / total);
+  const recentProbability = recent.map(value => value / 30);
+
+  for (let i = Math.max(1, history.length - 80); i < history.length; i++) {
+    if (history[i - 1] === history[history.length - 1]) {
+      transitions[history[i]]++;
+    }
+  }
+
+  total = transitions.reduce((sum, value) => sum + value, 0);
+
+  const transitionProbability = transitions.map(
+    value => total ? value / total : 0.1
+  );
+
+  const scores = Array.from({ length: 10 }, (_, digit) =>
+    0.5 * frequencyProbability[digit] +
+    0.3 * recentProbability[digit] +
+    0.2 * transitionProbability[digit]
+  );
+
+  const ranking = scores
+    .map((value, digit) => ({ value, digit }))
+    .sort((a, b) => b.value - a.value);
+
+  const bestDigit = ranking[0].digit;
+  const edge = ranking[0].value - ranking[1].value;
+
+  const rankOf = (array, digit) => array
+    .map((value, index) => ({ value, index }))
+    .sort((a, b) => b.value - a.value)
+    .findIndex(item => item.index === digit);
+
+  const confidence = Math.round(Math.max(
+    50,
+    Math.min(
+      95,
+      50 + (Math.max(...frequencyProbability) - 0.1) * 180 + edge * 170
+    )
+  ));
+
+  const agrees =
+    rankOf(frequencyProbability, bestDigit) <= 1 &&
+    rankOf(recentProbability, bestDigit) <= 1 &&
+    rankOf(transitionProbability, bestDigit) <= 2;
+
+  if (!agrees || edge < 0.035 || confidence < 67) {
+    return {
+      wait: true,
+      confidence,
+      reason: `Weak agreement — score difference: ${(edge * 100).toFixed(1)}%.`
+    };
+  }
+
+  return {
+    wait: false,
+    digit: bestDigit,
+    confidence,
+    reason: `Analysis filters passed — score difference: ${(edge * 100).toFixed(1)}%.`
+  };
 }
 
-if(data.msg_type==="history"){
-ticks=(data.history?.prices||[])
-.map(getDigit)
-.filter(digit=>digit!==null)
-.slice(-250);
+function onTick(digit) {
+  if (pending !== null) {
+    if (digit === pending) {
+      wins++;
+      $("signal").textContent = "MATCH — WIN";
+      $("reason").textContent = "The next market tick matched the target digit.";
+    } else {
+      losses++;
+      $("signal").textContent = "MATCH — LOSS";
+      $("reason").textContent = `The next market tick was ${digit}.`;
+    }
+
+    pending = null;
+    updateStats();
+  }
+
+  ticks.push(digit);
+  if (ticks.length > 250) ticks.shift();
+
+  if (!running || pending !== null || ticks.length - lastSignalAt < 4) {
+    return;
+  }
+
+  const result = analyse(ticks);
+  if (!result) return;
+
+  $("confidence").textContent = result.confidence + "%";
+
+  if (result.wait) {
+    $("digit").textContent = "—";
+    $("signal").textContent = "WAITING FOR SIGNAL";
+    $("reason").textContent = result.reason;
+    return;
+  }
+
+  $("digit").textContent = result.digit;
+  $("signal").textContent = "MATCH SIGNAL";
+  $("reason").textContent = result.reason;
+
+  pending = result.digit;
+  lastSignalAt = ticks.length;
+  trades++;
+  updateStats();
 }
 
-if(data.msg_type==="tick"){
-const digit=getDigit(data.tick.quote);
-if(digit!==null)onTick(digit);
-}
-};
+$("connect").addEventListener("click", connect);
 
-ws.onclose=()=>{
-connected=false;
-setStatus("Connection closed");
-};
+$("start").addEventListener("click", () => {
+  running = true;
 
-ws.onerror=()=>{
-setStatus("Network or WebSocket error");
-};
-}
-
-function analyse(history){
-if(history.length<100)return null;
-
-const frequency=Array(10).fill(0);
-const recent=Array(10).fill(0);
-const transitions=Array(10).fill(0);
-const from=Math.max(0,history.length-120);
-
-for(let i=from;i<history.length;i++){
-const age=history.length-1-i;
-frequency[history[i]]+=Math.exp(-age/45);
-}
-
-for(const digit of history.slice(-30)){
-recent[digit]++;
-}
-
-let total=frequency.reduce((sum,value)=>sum+value,0);
-const frequencyProbability=frequency.map(value=>value/total);
-const recentProbability=recent.map(value=>value/30);
-
-for(let i=Math.max(1,history.length-80);i<history.length;i++){
-if(history[i-1]===history[history.length-1]){
-transitions[history[i]]++;
-}
-}
-
-total=transitions.reduce((sum,value)=>sum+value,0);
-const transitionProbability=transitions.map(value=>total?value/total:0.1);
-
-const scores=Array.from({length:10},(_,digit)=>
-0.5*frequencyProbability[digit]+
-0.3*recentProbability[digit]+
-0.2*transitionProbability[digit]
-);
-
-const ranking=scores.map((value,digit)=>({value,digit}))
-.sort((a,b)=>b.value-a.value);
-
-const bestDigit=ranking[0].digit;
-const edge=ranking[0].value-ranking[1].value;
-
-const rankOf=(array,digit)=>array
-.map((value,index)=>({value,index}))
-.sort((a,b)=>b.value-a.value)
-.findIndex(item=>item.index===digit);
-
-const confidence=Math.round(Math.max(
-50,
-Math.min(95,50+(Math.max(...frequencyProbability)-0.1)*180+edge*170)
-));
-
-const agrees=
-rankOf(frequencyProbability,bestDigit)<=1&&
-rankOf(recentProbability,bestDigit)<=1&&
-rankOf(transitionProbability,bestDigit)<=2;
-
-if(!agrees||edge<0.035||confidence<67){
-return{
-wait:true,
-confidence,
-reason:`Weak agreement — score gap: ${(edge*100).toFixed(1)}%.`
-};
-}
-
-return{
-wait:false,
-digit:bestDigit,
-confidence,
-reason:`Frequency, recent-digit and transition filters passed — score gap: ${(edge*100).toFixed(1)}%.`
-};
-}
-
-function onTick(digit){
-if(pending!==null){
-if(digit===pending){
-wins++;
-$("signal").textContent="MATCH — WIN";
-$("reason").textContent="The next live tick matched the target digit.";
-}else{
-losses++;
-$("signal").textContent="MATCH — LOSS";
-$("reason").textContent=`The next live tick was ${digit}.`;
-}
-
-pending=null;
-updateStats();
-}
-
-ticks.push(digit);
-if(ticks.length>250)ticks.shift();
-
-if(!running||pending!==null||ticks.length-lastSignalAt<4)return;
-
-const result=analyse(ticks);
-if(!result)return;
-
-$("confidence").textContent=result.confidence+"%";
-
-if(result.wait){
-$("digit").textContent="—";
-$("signal").textContent="WAITING FOR SIGNAL";
-$("reason").textContent=result.reason;
-return;
-}
-
-$("digit").textContent=result.digit;
-$("signal").textContent="MATCH SIGNAL";
-$("reason").textContent=result.reason;
-
-pending=result.digit;
-lastSignalAt=ticks.length;
-trades++;
-updateStats();
-}
-
-$("connect").addEventListener("click",connect);
-
-$("start").addEventListener("click",()=>{
-running=true;
-
-if(!connected){
-connect();
-setStatus("Starting scanner — connecting…");
-}else{
-setStatus("Scanner running — live ticks",true);
-}
+  if (!connected) {
+    connect();
+    setStatus("Starting scanner — connecting to Deriv...");
+  } else {
+    setStatus("Scanner Running — receiving live ticks", true);
+  }
 });
 
-$("stop").addEventListener("click",()=>{
-running=false;
-pending=null;
-clearSignal();
-setStatus(
-connected?"Connected — scanner stopped":"Not connected",
-connected
-);
+$("stop").addEventListener("click", () => {
+  running = false;
+  pending = null;
+  clearSignal();
+
+  setStatus(
+    connected ? "Connected — scanner stopped." : "Not connected.",
+    connected
+  );
 });
 
-$("symbol").addEventListener("change",()=>{
-ticks=[];
-pending=null;
-lastSignalAt=-999;
-clearSignal();
+$("symbol").addEventListener("change", () => {
+  ticks = [];
+  pending = null;
+  lastSignalAt = -999;
+  clearSignal();
 
-if(ws&&(ws.readyState===WebSocket.CONNECTING||ws.readyState===WebSocket.OPEN)){
-ws.close();
-}
+  if (ws && ws.readyState !== WebSocket.CLOSED) {
+    ws.close();
+  }
 
-connected=false;
-connect();
+  connected = false;
+
+  // Wait until the previous connection closes before reconnecting.
+  setTimeout(connect, 500);
 });
 
 clearSignal();
