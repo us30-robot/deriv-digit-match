@@ -68,16 +68,9 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
 
   <div class="grid" style="margin-top:12px">
     <div>
-      <label class="label" for="symbol">Market</label>
-      <select id="symbol">
-        <option value="1HZ100V">Volatility 100 (1s)</option>
-        <option value="1HZ75V">Volatility 75 (1s)</option>
-        <option value="1HZ50V">Volatility 50 (1s)</option>
-        <option value="1HZ25V">Volatility 25 (1s)</option>
-        <option value="1HZ10V">Volatility 10 (1s)</option>
-        <option value="R_100">Volatility 100</option>
-        <option value="R_75">Volatility 75</option>
-        <option value="R_50">Volatility 50</option>
+      <label class="label" for="symbol">Market selection</label>
+      <select id="symbol" disabled>
+        <option value="AUTO">AUTO — BEST SETUP</option>
       </select>
     </div>
     <div>
@@ -91,7 +84,7 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
     </div>
   </div>
 
-  <div class="note">Each approved signal requests a live DIGITMATCH proposal and buys it automatically. This is a demo-only implementation. One contract at a time is allowed.</div>
+  <div class="note">The robot scans 5 supported 1-second Volatility markets and automatically selects the strongest setup. It checks for a new signal every 5 seconds. Demo-only implementation; one contract at a time is allowed.</div>
 </section>
 
 <section class="grid">
@@ -123,7 +116,7 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
   <div class="label">Connection</div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="liveStatus">Not connected</span></div>
   <button class="secondary" id="refresh" style="width:100%;margin-top:12px" disabled>↻ REFRESH DATA</button>
-  <div class="note">The analysis is heuristic. A high confidence score is not a guaranteed probability of winning.</div>
+  <div class="note">The analysis is heuristic. The robot evaluates the best of 5 supported 1-second Volatility markets every 5 seconds. A high confidence score is not a guaranteed probability of winning.</div>
 </section>
 </div>
 </div>
@@ -156,9 +149,18 @@ let appId = "";
 let account = null;
 let connected = false;
 let running = false;
-let ticks = [];
-let tickCounter = 0;
+const AUTO_MARKETS = ["1HZ100V","1HZ75V","1HZ50V","1HZ25V","1HZ10V"];
+const MARKET_NAMES = {
+  "1HZ100V": "Volatility 100 (1s)",
+  "1HZ75V": "Volatility 75 (1s)",
+  "1HZ50V": "Volatility 50 (1s)",
+  "1HZ25V": "Volatility 25 (1s)",
+  "1HZ10V": "Volatility 10 (1s)"
+};
+let marketHistories = {};
+let signalTimer = null;
 let proposalPending = false;
+let selectedMarket = null;
 let activeContractId = null;
 let wins = 0, losses = 0, trades = 0;
 let reqId = 100;
@@ -199,6 +201,7 @@ function resetStats() {
 }
 
 function clearSignal() {
+  selectedMarket = null;
   $("digit").textContent = "—";
   $("confidence").textContent = "—";
   $("signal").textContent = "WAITING";
@@ -331,21 +334,103 @@ async function connect() {
 }
 
 function subscribeMarket() {
-  ticks = [];
-  tickCounter = 0;
+  marketHistories = Object.fromEntries(AUTO_MARKETS.map(s => [s, []]));
   clearSignal();
 
-  send({
-    ticks_history: $("symbol").value,
-    count: 250,
-    end: "latest",
-    style: "ticks",
-    req_id: nextReq()
+  AUTO_MARKETS.forEach(symbol => {
+    send({
+      ticks_history: symbol,
+      count: 250,
+      end: "latest",
+      style: "ticks",
+      req_id: nextReq()
+    });
+
+    send({
+      ticks: symbol,
+      subscribe: 1,
+      req_id: nextReq()
+    });
   });
 
+  setStatus("Scanning 5 Volatility markets. Signals refresh every 5 seconds.", true);
+}
+
+function marketFromMessage(d) {
+  return d?.tick?.symbol || d?.history?.symbol || d?.echo_req?.ticks || d?.echo_req?.ticks_history || null;
+}
+
+function marketLabel(symbol) {
+  return MARKET_NAMES[symbol] || symbol;
+}
+
+function evaluateBestMarket() {
+  const candidates = [];
+
+  for (const symbol of AUTO_MARKETS) {
+    const history = marketHistories[symbol] || [];
+    const result = analyse(history);
+    if (!result) continue;
+    candidates.push({ symbol, result, score: result.confidence + result.edge * 1000 });
+  }
+
+  candidates.sort((a,b) => b.score - a.score);
+  return candidates[0] || null;
+}
+
+function requestSignal() {
+  if (!running) return;
+
+  if (activeContractId || proposalPending) {
+    $("signal").textContent = activeContractId ? "TRADE OPEN" : "PROPOSAL...";
+    $("reason").textContent = activeContractId
+      ? "Waiting for the current demo contract to settle."
+      : "Waiting for the current proposal.";
+    return;
+  }
+
+  const best = evaluateBestMarket();
+  if (!best) {
+    $("signal").textContent = "COLLECTING DATA";
+    $("reason").textContent = "Building history across the 5 auto-selected markets.";
+    return;
+  }
+
+  const { symbol, result } = best;
+  selectedMarket = symbol;
+  $("digit").textContent = result.digit;
+  $("confidence").textContent = result.confidence + "%";
+
+  if (!result.strong) {
+    $("signal").textContent = "WAIT";
+    $("reason").textContent = "Best market: " + marketLabel(symbol) + ". " + result.reason + " No trade placed.";
+    return;
+  }
+
+  proposalPending = true;
+  $("signal").textContent = "SIGNAL READY";
+  $("reason").textContent = "Auto-selected " + marketLabel(symbol) + " — digit " + result.digit + ". Requesting proposal...";
+
+  const stake = Number($("stake").value);
+  const duration = Number($("duration").value);
+  const currency = String(account?.currency || "USD");
+
+  if (!Number.isFinite(stake) || stake < 0.35) {
+    proposalPending = false;
+    setStatus("Invalid stake; no trade placed.");
+    return;
+  }
+
   send({
-    ticks: $("symbol").value,
-    subscribe: 1,
+    proposal: 1,
+    amount: stake,
+    basis: "stake",
+    contract_type: "DIGITMATCH",
+    currency,
+    barrier: String(result.digit),
+    duration,
+    duration_unit: "t",
+    underlying_symbol: symbol,
     req_id: nextReq()
   });
 }
@@ -371,15 +456,26 @@ function handleMessage(event) {
   }
 
   if (d.msg_type === "history" || d.history) {
+    const symbol = marketFromMessage(d);
     const prices = d.history?.prices || d.history?.quotes || [];
-    ticks = Array.isArray(prices) ? prices.map(getDigit).filter(x => x !== null).slice(-250) : [];
-    setStatus("Live market history loaded. Press START AUTO.", true);
+    if (symbol && AUTO_MARKETS.includes(symbol)) {
+      marketHistories[symbol] = Array.isArray(prices)
+        ? prices.map(getDigit).filter(x => x !== null).slice(-250)
+        : [];
+    }
+    setStatus("Live history loaded. Auto market selection is active; signals refresh every 5 seconds.", true);
     return;
   }
 
   if (d.msg_type === "tick" && d.tick) {
+    const symbol = marketFromMessage(d);
     const digit = getDigit(d.tick.quote ?? d.tick.price ?? d.tick.value);
-    if (digit !== null) onTick(digit);
+    if (symbol && AUTO_MARKETS.includes(symbol) && digit !== null) {
+      const history = marketHistories[symbol] || [];
+      history.push(digit);
+      if (history.length > 250) history.shift();
+      marketHistories[symbol] = history;
+    }
     return;
   }
 
@@ -511,63 +607,6 @@ function analyse(history) {
   };
 }
 
-function onTick(digit) {
-  ticks.push(digit);
-  if (ticks.length > 250) ticks.shift();
-
-  tickCounter++;
-  if (!running || tickCounter < 5) return;
-  tickCounter = 0;
-
-  if (activeContractId || proposalPending) {
-    $("signal").textContent = activeContractId ? "TRADE OPEN" : "PROPOSAL...";
-    return;
-  }
-
-  const r = analyse(ticks);
-  if (!r) {
-    $("signal").textContent = "COLLECTING DATA";
-    $("reason").textContent = "Need at least 40 ticks.";
-    return;
-  }
-
-  $("digit").textContent = r.digit;
-  $("confidence").textContent = r.confidence + "%";
-
-  if (!r.strong) {
-    $("signal").textContent = "WAIT";
-    $("reason").textContent = r.reason + " No trade placed.";
-    return;
-  }
-
-  proposalPending = true;
-  $("signal").textContent = "SIGNAL READY";
-  $("reason").textContent = "Requesting DIGITMATCH proposal for digit " + r.digit + "...";
-
-  const stake = Number($("stake").value);
-  const duration = Number($("duration").value);
-  const currency = String(account?.currency || "USD");
-
-  if (!Number.isFinite(stake) || stake < 0.35) {
-    proposalPending = false;
-    setStatus("Invalid stake; no trade placed.");
-    return;
-  }
-
-  send({
-    proposal: 1,
-    amount: stake,
-    basis: "stake",
-    contract_type: "DIGITMATCH",
-    currency,
-    barrier: String(r.digit),
-    duration,
-    duration_unit: "t",
-    underlying_symbol: $("symbol").value,
-    req_id: nextReq()
-  });
-}
-
 function start() {
   if (!connected || !account || !accountIsDemo(account)) {
     setStatus("Connect a verified demo account first.");
@@ -585,16 +624,18 @@ function start() {
   }
 
   running = true;
-  tickCounter = 0;
   $("signal").textContent = "SCANNING";
-  $("reason").textContent = "Auto trading is ON. Waiting for the next qualified signal.";
-  setStatus("AUTO TRADING ON — demo only.", true);
+  $("reason").textContent = "Scanning 5 markets. Next signal check in up to 5 seconds.";
+  setStatus("AUTO TRADING ON — demo only. Market selection is automatic.", true);
+
+  if (signalTimer) clearInterval(signalTimer);
+  signalTimer = setInterval(requestSignal, 5000);
 }
 
 function stop() {
   running = false;
   proposalPending = false;
-  tickCounter = 0;
+  if (signalTimer) { clearInterval(signalTimer); signalTimer = null; }
   $("signal").textContent = activeContractId ? "TRADE OPEN" : "STOPPED";
   $("reason").textContent = activeContractId
     ? "New entries stopped. The open demo contract will settle normally."
@@ -605,6 +646,7 @@ function stop() {
 function disconnect() {
   running = false;
   proposalPending = false;
+  if (signalTimer) { clearInterval(signalTimer); signalTimer = null; }
   token = "";
 
   if (ws) {
@@ -614,7 +656,8 @@ function disconnect() {
   connected = false;
   account = null;
   activeContractId = null;
-  ticks = [];
+  marketHistories = {};
+  selectedMarket = null;
   $("dashboard").classList.add("hidden");
   $("connectionPanel").classList.remove("hidden");
   $("connect").disabled = false;
@@ -642,16 +685,6 @@ $("refresh").addEventListener("click", () => {
   subscribeMarket();
 });
 
-$("symbol").addEventListener("change", () => {
-  if (!connected) return;
-  if (activeContractId || proposalPending) {
-    $("symbol").value = $("symbol").dataset.previous || $("symbol").value;
-    setStatus("Wait for the current trade/proposal to finish before changing markets.");
-    return;
-  }
-  $("symbol").dataset.previous = $("symbol").value;
-  subscribeMarket();
-});
 
 $("stake").addEventListener("change", () => {
   const n = Number($("stake").value);
