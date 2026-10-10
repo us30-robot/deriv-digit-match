@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Language" content="en">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Digit Match Signal Provider</title>
+<title>Digit Match — New Deriv API</title>
 <style>
 :root {
   --bg: #080b12; --card: #111722; --line: #252e3c;
@@ -55,9 +55,11 @@ input::placeholder { color: #778397; }
     <h1>Digit Match</h1>
     <div class="status"><span id="dot" class="dot"></span><span id="status">Not connected to Deriv</span></div>
     <h2>Connect Your Demo Account</h2>
-    <label class="label" for="apiToken">Deriv API Token</label>
-    <input id="apiToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your demo API token here">
-    <div class="note">Use a demo-account token with read-only permissions. Do not use a token with trading or payment permissions. Your token is not saved in browser storage and is cleared from the input after successful authorization.</div>
+    <label class="label" for="appId">Deriv App ID</label>
+    <input id="appId" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your alphanumeric App ID">
+    <label class="label" for="apiToken" style="display:block;margin-top:12px">Deriv Personal Access Token (PAT)</label>
+    <input id="apiToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your PAT here">
+    <div class="note">This version uses Deriv's newer REST API for account authorization and the newer public WebSocket for live market ticks. Your token is sent only to Deriv over HTTPS, is not saved in browser storage, and is cleared after successful authorization. The account-list endpoint requires the API permission specified by Deriv (currently trade scope); this app itself never sends trade orders. Use a demo account for testing and never share your token.</div>
     <button class="connect" id="connect">CONNECT DEMO ACCOUNT</button>
     <button class="secondary" id="disconnect" disabled>DISCONNECT ACCOUNT</button>
   </div>
@@ -71,7 +73,7 @@ input::placeholder { color: #778397; }
       <div class="account-row"><span>Currency</span><span id="currency">—</span></div>
       <div class="account-row"><span>Balance</span><span id="balance">—</span></div>
     </div>
-    <div class="note">This app uses account authorization to confirm the connected account and show account information. It does not place trades.</div>
+    <div class="note">Account details are retrieved from Deriv over HTTPS. Market ticks are read from the public feed. This app does not place trades.</div>
   </div>
 
   <div class="card">
@@ -81,7 +83,7 @@ input::placeholder { color: #778397; }
     </div>
     <div class="signal">
       <strong id="signal">WAITING FOR SIGNAL</strong>
-      <small id="reason">Connect a demo account, then start the scanner.</small>
+      <small id="reason">Authorize a demo account, then start the scanner.</small>
     </div>
     <button class="start" id="start" disabled>START SCANNER</button>
     <button class="stop" id="stop" disabled>STOP SCANNER</button>
@@ -105,7 +107,7 @@ input::placeholder { color: #778397; }
       </select>
     </div>
     <div class="note">
-      English interface. Live public market ticks are analyzed and each signal is paper-tested against the next tick. Wins and losses are simulated signal outcomes, not trading profits. The confidence score is an analysis filter, not a verified probability of winning. Account authorization does not enable trade execution.
+      English interface. Live public market ticks are analyzed and each signal is paper-tested against the next tick. Wins and losses are simulated signal outcomes, not trading profits. The confidence score is an analysis filter, not a verified probability of winning. No trade execution is included.
     </div>
   </div>
 </div>
@@ -113,8 +115,8 @@ input::placeholder { color: #778397; }
 <script>
 "use strict";
 
-const APP_ID = "34w4UNfk1crTsZL1SGg9c";
-const socketUrl = () => `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`;
+const REST_BASE = "https://api.derivws.com";
+const PUBLIC_WS_URL = "wss://api.derivws.com/trading/v1/options/ws/public";
 
 let ws = null;
 let running = false;
@@ -125,8 +127,12 @@ let ticks = [];
 let pending = null;
 let lastSignalAt = -999;
 let wins = 0, losses = 0, trades = 0;
-let balanceSubscriptionId = null;
-let reconnectingForMarket = false;
+let userRequestedDisconnect = false;
+let lastConnectionError = "";
+let activeAppId = "";
+let activeToken = "";
+let activeAccount = null;
+let historyRequestPending = false;
 
 const $ = id => document.getElementById(id);
 
@@ -147,7 +153,7 @@ function resetAccountStatus() {
   setAccountStatus("Not authorized", "Demo account required", "—", "—", "—");
   authorized = false;
   demoVerified = false;
-  balanceSubscriptionId = null;
+  activeAccount = null;
   $("start").disabled = true;
   $("stop").disabled = true;
   $("disconnect").disabled = true;
@@ -171,173 +177,187 @@ function clearSignal() {
   $("reason").textContent = "Waiting for sufficient live market data.";
 }
 
-function connect() {
+function errorMessage(payload, fallback) {
+  const err = payload?.errors?.[0] || payload?.error || payload?.message;
+  if (typeof err === "string") return err;
+  if (err?.message) return err.message;
+  if (err?.code) return `${err.code}${err.message ? ": " + err.message : ""}`;
+  return fallback;
+}
+
+async function connect() {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
     setStatus("A connection is already active.");
     return;
   }
 
   const token = $("apiToken").value.trim();
+  const appId = $("appId").value.trim();
+  if (!appId) {
+    setStatus("Enter the alphanumeric App ID from your Deriv developer dashboard.");
+    $("appId").focus();
+    return;
+  }
   if (!token) {
-    setStatus("Enter your demo API token to continue.");
+    setStatus("Enter your Deriv Personal Access Token (PAT).");
     $("apiToken").focus();
     return;
   }
 
+  activeAppId = appId;
+  activeToken = token;
+  lastConnectionError = "";
+  userRequestedDisconnect = false;
   running = false;
   connected = false;
   authorized = false;
   demoVerified = false;
   ticks = [];
   pending = null;
+  historyRequestPending = false;
   resetAccountStatus();
   $("connect").disabled = true;
-  setStatus("Connecting securely to Deriv...");
+  setStatus("Checking your Deriv authorization...");
 
   try {
-    ws = new WebSocket(socketUrl());
-  } catch {
+    // New Deriv API: PAT + Deriv-App-ID header. No token is stored locally.
+    const response = await fetch(`${REST_BASE}/trading/v1/options/accounts`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Deriv-App-ID": appId,
+        "Accept": "application/json"
+      }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg = errorMessage(payload, `Deriv returned HTTP ${response.status}.`);
+      throw new Error(`${msg} (HTTP ${response.status})`);
+    }
+
+    const data = payload?.data;
+    let accounts = Array.isArray(data) ? data
+      : Array.isArray(data?.accounts) ? data.accounts
+      : Array.isArray(payload?.accounts) ? payload.accounts
+      : Array.isArray(data?.items) ? data.items : [];
+
+    const demoAccount = accounts.find(a => {
+      const type = String(a?.account_type ?? a?.type ?? a?.accountType ?? "").toLowerCase();
+      return type.includes("demo") || type.includes("virtual") || a?.is_virtual === true || a?.is_virtual === 1;
+    });
+
+    if (!demoAccount) {
+      const realFound = accounts.length > 0;
+      throw new Error(realFound
+        ? "Deriv authorized the token, but no demo Options account was returned. Check that you have a demo account and the required API scope."
+        : "Deriv authorized the request, but returned no demo Options account. Confirm this token is a Personal Access Token (PAT) and has the required API scope.");
+    }
+
+    activeAccount = demoAccount;
+    authorized = true;
+    demoVerified = true;
+    $("apiToken").value = "";
+    // Keep the token in memory only for this session; it is not written to storage.
+    const accountId = demoAccount.account_id ?? demoAccount.id ?? demoAccount.loginid ?? demoAccount.login_id ?? "Demo account verified";
+    const currency = demoAccount.currency ?? demoAccount.currency_code ?? "—";
+    const balanceValue = demoAccount.balance ?? demoAccount.available_balance;
+    const balance = balanceValue === undefined ? "Not supplied by account endpoint" : `${balanceValue} ${currency === "—" ? "" : currency}`.trim();
+    setAccountStatus("Authorized", "Demo account verified", String(accountId), String(currency), balance);
+    $("disconnect").disabled = false;
+    setStatus("Demo account verified. Connecting to live market data...");
+
+    connectPublicMarketFeed();
+  } catch (error) {
+    activeToken = "";
+    authorized = false;
+    demoVerified = false;
     $("connect").disabled = false;
-    setStatus("Unable to start the connection. Check your browser.");
+    const msg = error?.message || "Unknown connection error.";
+    lastConnectionError = msg;
+    setAccountStatus("Authorization failed", "Demo account required", "—", "—", "—");
+    setStatus("Connection failed: " + msg);
+  }
+}
+
+function connectPublicMarketFeed() {
+  try {
+    ws = new WebSocket(PUBLIC_WS_URL);
+  } catch (error) {
+    connected = false;
+    $("connect").disabled = false;
+    setStatus("Could not start the Deriv market-data connection. Check your browser/network.");
     return;
   }
 
   ws.onopen = () => {
     connected = true;
-    setStatus("Connected. Authorizing your account...");
-    // Token is sent only over the encrypted WebSocket connection.
-    ws.send(JSON.stringify({ authorize: token }));
+    $("connect").disabled = false;
+    $("disconnect").disabled = false;
+    $("start").disabled = false;
+    $("stop").disabled = false;
+    setStatus("Demo account verified. Loading live market ticks...", true);
+    const symbol = $("symbol").value;
+    historyRequestPending = true;
+    ws.send(JSON.stringify({ ticks_history: symbol, count: 250, end: "latest", style: "ticks" }));
+    ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
   };
 
   ws.onmessage = event => {
     let data;
-    try {
-      data = JSON.parse(event.data);
-    } catch {
-      setStatus("Connection error: the server response could not be read.");
+    try { data = JSON.parse(event.data); }
+    catch { setStatus("Deriv returned an unreadable market-data response."); return; }
+
+    if (data.error || data.errors) {
+      const msg = errorMessage(data, "Unknown market-data error.");
+      lastConnectionError = "Deriv market-data error: " + msg;
+      setStatus(lastConnectionError, connected);
       return;
     }
 
-    if (data.error) {
-      const message = data.error.message || "Unknown API error.";
-      if (data.msg_type === "authorize" || !authorized) {
-        setStatus("Authorization failed: " + message);
-        $("authState").textContent = "Authorization failed";
-        $("connect").disabled = false;
-      } else {
-        setStatus("Deriv API error: " + message, connected);
+    if (data.msg_type === "history" || data.history) {
+      const prices = data.history?.prices || data.history?.quotes || [];
+      if (Array.isArray(prices) && prices.length) {
+        ticks = prices.map(getDigit).filter(digit => digit !== null).slice(-250);
       }
+      historyRequestPending = false;
+      if (authorized && demoVerified && connected) setStatus("Demo account verified. Receiving live market ticks.", true);
       return;
     }
 
-    if (data.msg_type === "authorize" && data.authorize) {
-      const account = data.authorize;
-      const isVirtual = account.is_virtual === true || account.is_virtual === 1;
-
-      if (!isVirtual) {
-        setAccountStatus(
-          "Connected, but not authorized for this app",
-          "Real account detected",
-          account.loginid || "—",
-          account.currency || "—",
-          "Hidden"
-        );
-        setStatus("This app is configured for demo accounts only. Connect a demo account.");
-        $("apiToken").value = "";
-        $("connect").disabled = false;
-        if (ws) ws.close();
-        connected = false;
-        authorized = false;
-        demoVerified = false;
-        return;
-      }
-
-      authorized = true;
-      demoVerified = true;
-      $("apiToken").value = "";
-      setAccountStatus(
-        "Authorized",
-        "Demo account verified",
-        account.loginid || "Demo account",
-        account.currency || "—",
-        "Loading..."
-      );
-      $("connect").disabled = false;
-      $("disconnect").disabled = false;
-      $("start").disabled = false;
-      $("stop").disabled = false;
-      setStatus("Demo account authorized. Loading balance and market data...", true);
-
-      if (account.balance !== undefined) {
-        $("balance").textContent = `${account.balance} ${account.currency || ""}`.trim();
-      }
-
-      const symbol = $("symbol").value;
-      ws.send(JSON.stringify({
-        ticks_history: symbol,
-        count: 250,
-        end: "latest",
-        style: "ticks"
-      }));
-      ws.send(JSON.stringify({
-        ticks: symbol,
-        subscribe: 1
-      }));
-      ws.send(JSON.stringify({
-        balance: 1,
-        subscribe: 1
-      }));
-      return;
-    }
-
-    if (data.msg_type === "balance" && data.balance) {
-      const b = data.balance;
-      balanceSubscriptionId = data.subscription?.id || balanceSubscriptionId;
-      $("balance").textContent = `${b.balance} ${b.currency || ""}`.trim();
-      return;
-    }
-
-    if (data.msg_type === "history") {
-      ticks = (data.history?.prices || [])
-        .map(getDigit)
-        .filter(digit => digit !== null)
-        .slice(-250);
-      if (authorized && demoVerified) {
-        setStatus("Demo account connected. Receiving live market ticks.", true);
-      }
-      return;
-    }
-
-    if (data.msg_type === "tick" && data.tick) {
-      const digit = getDigit(data.tick.quote);
+    if ((data.msg_type === "tick" && data.tick) || data.tick) {
+      const digit = getDigit(data.tick?.quote ?? data.tick?.price ?? data.tick?.value);
       if (digit !== null) onTick(digit);
     }
   };
 
-  ws.onclose = () => {
+  ws.onclose = event => {
     connected = false;
     running = false;
-    resetAccountStatus();
+    $("start").disabled = true;
+    $("stop").disabled = true;
+    if (userRequestedDisconnect) {
+      setStatus("Disconnected from Deriv.");
+    } else {
+      const detail = event?.code ? ` (code ${event.code}${event.reason ? ": " + event.reason : ""})` : "";
+      setStatus((lastConnectionError || "Market-data connection closed") + detail + ".");
+    }
     $("connect").disabled = false;
-    setStatus("Disconnected from Deriv.");
   };
 
   ws.onerror = () => {
-    setStatus("Connection error. Check your internet connection and API token permissions.");
+    lastConnectionError = "Could not connect to Deriv's new public WebSocket. Check internet access or try again.";
+    setStatus(lastConnectionError);
     $("connect").disabled = false;
   };
 }
 
 function disconnect() {
+  userRequestedDisconnect = true;
   running = false;
   pending = null;
+  activeToken = "";
   if (ws && ws.readyState !== WebSocket.CLOSED) {
-    try {
-      if (balanceSubscriptionId) {
-        ws.send(JSON.stringify({ forget: balanceSubscriptionId }));
-      }
-    } catch {}
-    ws.close();
+    try { ws.close(); } catch {}
   }
   ws = null;
   connected = false;
@@ -460,18 +480,18 @@ $("disconnect").addEventListener("click", disconnect);
 
 $("start").addEventListener("click", () => {
   if (!authorized || !demoVerified || !connected) {
-    setStatus("Connect and authorize a demo account before starting the scanner.");
+    setStatus("Authorize a demo account and connect to live ticks before starting the scanner.");
     return;
   }
   running = true;
-  setStatus("Scanner running — demo account authorized, live ticks received.", true);
+  setStatus("Scanner running — demo account verified, live ticks received.", true);
 });
 
 $("stop").addEventListener("click", () => {
   running = false;
   pending = null;
   clearSignal();
-  setStatus(authorized ? "Demo account connected — scanner stopped." : "Not connected.");
+  setStatus(authorized ? "Demo account verified — scanner stopped." : "Not connected.");
 });
 
 $("symbol").addEventListener("change", () => {
@@ -488,12 +508,8 @@ $("symbol").addEventListener("change", () => {
   setStatus("Changing market subscription...", true);
   ws.send(JSON.stringify({ forget_all: "ticks" }));
   const symbol = $("symbol").value;
-  ws.send(JSON.stringify({
-    ticks_history: symbol,
-    count: 250,
-    end: "latest",
-    style: "ticks"
-  }));
+  historyRequestPending = true;
+  ws.send(JSON.stringify({ ticks_history: symbol, count: 250, end: "latest", style: "ticks" }));
   ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
 });
 
