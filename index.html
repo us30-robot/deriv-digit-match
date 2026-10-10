@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,115 +5,86 @@
 <meta http-equiv="Content-Language" content="en">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Digit Match Signal Provider</title>
-
 <style>
 :root {
-  --bg: #080b12;
-  --card: #111722;
-  --line: #252e3c;
-  --text: #f4f7fb;
-  --muted: #8f9bad;
-  --green: #25d366;
-  --red: #ff4d5f;
+  --bg: #080b12; --card: #111722; --line: #252e3c;
+  --text: #f4f7fb; --muted: #8f9bad; --green: #25d366;
+  --red: #ff4d5f; --amber: #f5c451;
 }
 * { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Arial, sans-serif;
-}
-.wrap { max-width: 430px; margin: auto; padding: 18px; }
-.card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: 18px;
-  margin-bottom: 14px;
-}
+body { margin: 0; background: var(--bg); color: var(--text); font-family: Arial, sans-serif; }
+.wrap { max-width: 460px; margin: auto; padding: 18px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; margin-bottom: 14px; }
 h1 { font-size: 23px; text-align: center; margin: 4px 0 18px; }
+h2 { font-size: 16px; margin: 0 0 12px; }
 .status { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 14px; }
-button {
-  width: 100%;
-  border: 0;
-  border-radius: 12px;
-  padding: 15px;
-  font-size: 16px;
-  font-weight: 700;
-  margin-top: 9px;
-  cursor: pointer;
-}
-.connect { background: white; color: #111; }
+button { width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 700; margin-top: 9px; cursor: pointer; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+.connect { background: #fff; color: #111; }
 .start { background: var(--green); color: #07100a; }
 .stop { background: var(--red); color: white; }
+.secondary { background: #202a39; color: white; border: 1px solid var(--line); }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.box {
-  background: #0b1018;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px;
-}
+.box { background: #0b1018; border: 1px solid var(--line); border-radius: 12px; padding: 14px; min-width: 0; }
 .label { font-size: 12px; color: var(--muted); }
-.value { font-size: 25px; font-weight: 800; margin-top: 5px; }
-.signal {
-  text-align: center;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 18px;
-  margin-top: 12px;
-}
-.signal strong { display: block; font-size: 24px; }
-.signal small { display: block; color: var(--muted); margin-top: 7px; }
+.value { font-size: 24px; font-weight: 800; margin-top: 5px; overflow-wrap: anywhere; }
+.signal { text-align: center; border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-top: 12px; }
+.signal strong { display: block; font-size: 22px; }
+.signal small { display: block; color: var(--muted); margin-top: 7px; line-height: 1.45; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
-.stat { background: #0b1018; border-radius: 12px; padding: 12px; }
+.stat { background: #0b1018; border-radius: 12px; padding: 12px 6px; }
 .stat b { display: block; font-size: 21px; }
 .stat span { font-size: 11px; color: var(--muted); }
-select {
-  width: 100%;
-  background: #0b1018;
-  color: white;
-  border: 1px solid var(--line);
-  padding: 12px;
-  border-radius: 10px;
-  margin-top: 8px;
-}
-.note { font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: 12px; }
+select, input { width: 100%; background: #0b1018; color: white; border: 1px solid var(--line); padding: 12px; border-radius: 10px; margin-top: 8px; font-size: 14px; }
+input::placeholder { color: #778397; }
+.note { font-size: 11px; color: var(--muted); line-height: 1.55; margin-top: 12px; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #777; margin-right: 6px; }
 .live { background: var(--green); }
+.warning { color: var(--amber); }
+.account-state { display: grid; gap: 10px; }
+.account-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.account-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.account-row span:first-child { color: var(--muted); }
+.account-row span:last-child { text-align: right; overflow-wrap: anywhere; }
+.hidden { display: none !important; }
 </style>
 </head>
-
 <body>
 <div class="wrap">
-
   <div class="card">
     <h1>Digit Match</h1>
-    <div class="status">
-      <span id="dot" class="dot"></span>
-      <span id="status">Not Connected</span>
+    <div class="status"><span id="dot" class="dot"></span><span id="status">Not connected to Deriv</span></div>
+    <h2>Connect Your Demo Account</h2>
+    <label class="label" for="apiToken">Deriv API Token</label>
+    <input id="apiToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your demo API token here">
+    <div class="note">Use a demo-account token with read-only permissions. Do not use a token with trading or payment permissions. Your token is not saved in browser storage and is cleared from the input after successful authorization.</div>
+    <button class="connect" id="connect">CONNECT DEMO ACCOUNT</button>
+    <button class="secondary" id="disconnect" disabled>DISCONNECT ACCOUNT</button>
+  </div>
+
+  <div class="card">
+    <h2>Account Status</h2>
+    <div class="account-state">
+      <div class="account-row"><span>Authorization</span><span id="authState">Not authorized</span></div>
+      <div class="account-row"><span>Account Type</span><span id="accountType">Demo account required</span></div>
+      <div class="account-row"><span>Account ID</span><span id="accountId">—</span></div>
+      <div class="account-row"><span>Currency</span><span id="currency">—</span></div>
+      <div class="account-row"><span>Balance</span><span id="balance">—</span></div>
     </div>
-    <button class="connect" id="connect">CONNECT DERIV ACCOUNT</button>
+    <div class="note">This app uses account authorization to confirm the connected account and show account information. It does not place trades.</div>
   </div>
 
   <div class="card">
     <div class="grid">
-      <div class="box">
-        <div class="label">Target Digit</div>
-        <div class="value" id="digit">—</div>
-      </div>
-      <div class="box">
-        <div class="label">Signal Confidence</div>
-        <div class="value" id="confidence">—</div>
-      </div>
+      <div class="box"><div class="label">Target Digit</div><div class="value" id="digit">—</div></div>
+      <div class="box"><div class="label">Signal Confidence Score</div><div class="value" id="confidence">—</div></div>
     </div>
-
     <div class="signal">
       <strong id="signal">WAITING FOR SIGNAL</strong>
-      <small id="reason">Connect to Deriv to receive live market ticks.</small>
+      <small id="reason">Connect a demo account, then start the scanner.</small>
     </div>
-
-    <button class="start" id="start">START SCANNER</button>
-    <button class="stop" id="stop">STOP SCANNER</button>
+    <button class="start" id="start" disabled>START SCANNER</button>
+    <button class="stop" id="stop" disabled>STOP SCANNER</button>
   </div>
 
   <div class="card">
@@ -123,9 +93,8 @@ select {
       <div class="stat"><b id="losses">0</b><span>Losses</span></div>
       <div class="stat"><b id="trades">0</b><span>Signals Tested</span></div>
     </div>
-
     <div style="margin-top:14px">
-      <div class="label">Select Market</div>
+      <label class="label" for="symbol">Select Market</label>
       <select id="symbol">
         <option value="1HZ100V">Volatility 100 (1 Second)</option>
         <option value="1HZ75V">Volatility 75 (1 Second)</option>
@@ -135,38 +104,53 @@ select {
         <option value="R_50">Volatility 50</option>
       </select>
     </div>
-
     <div class="note">
-      LANGUAGE: ENGLISH.
-      This application receives public market ticks and tests signals against the next tick. It does not execute real trades or log in to your trading account. The confidence score is an analysis filter, not a guaranteed probability of winning. If the connection fails, check your internet connection and open this page in a regular browser.
+      English interface. Live public market ticks are analyzed and each signal is paper-tested against the next tick. Wins and losses are simulated signal outcomes, not trading profits. The confidence score is an analysis filter, not a verified probability of winning. Account authorization does not enable trade execution.
     </div>
   </div>
-
 </div>
 
 <script>
 "use strict";
 
 const APP_ID = "34w4UNfk1crTsZL1SGg9c";
-
-const socketUrl = () =>
-  `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`;
+const socketUrl = () => `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`;
 
 let ws = null;
 let running = false;
 let connected = false;
+let authorized = false;
+let demoVerified = false;
 let ticks = [];
 let pending = null;
 let lastSignalAt = -999;
-let wins = 0;
-let losses = 0;
-let trades = 0;
+let wins = 0, losses = 0, trades = 0;
+let balanceSubscriptionId = null;
+let reconnectingForMarket = false;
 
 const $ = id => document.getElementById(id);
 
 function setStatus(message, isLive = false) {
   $("status").textContent = message;
   $("dot").className = "dot" + (isLive ? " live" : "");
+}
+
+function setAccountStatus(auth, type, id, currency, balance) {
+  $("authState").textContent = auth;
+  $("accountType").textContent = type;
+  $("accountId").textContent = id;
+  $("currency").textContent = currency;
+  $("balance").textContent = balance;
+}
+
+function resetAccountStatus() {
+  setAccountStatus("Not authorized", "Demo account required", "—", "—", "—");
+  authorized = false;
+  demoVerified = false;
+  balanceSubscriptionId = null;
+  $("start").disabled = true;
+  $("stop").disabled = true;
+  $("disconnect").disabled = true;
 }
 
 function getDigit(quote) {
@@ -184,52 +168,132 @@ function clearSignal() {
   $("digit").textContent = "—";
   $("confidence").textContent = "—";
   $("signal").textContent = "WAITING FOR SIGNAL";
-  $("reason").textContent = "Waiting for sufficient market data.";
+  $("reason").textContent = "Waiting for sufficient live market data.";
 }
 
 function connect() {
-  if (
-    ws &&
-    (ws.readyState === WebSocket.CONNECTING ||
-     ws.readyState === WebSocket.OPEN)
-  ) {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+    setStatus("A connection is already active.");
     return;
   }
 
-  setStatus("Connecting to Deriv...");
-  ws = new WebSocket(socketUrl());
+  const token = $("apiToken").value.trim();
+  if (!token) {
+    setStatus("Enter your demo API token to continue.");
+    $("apiToken").focus();
+    return;
+  }
+
+  running = false;
+  connected = false;
+  authorized = false;
+  demoVerified = false;
+  ticks = [];
+  pending = null;
+  resetAccountStatus();
+  $("connect").disabled = true;
+  setStatus("Connecting securely to Deriv...");
+
+  try {
+    ws = new WebSocket(socketUrl());
+  } catch {
+    $("connect").disabled = false;
+    setStatus("Unable to start the connection. Check your browser.");
+    return;
+  }
 
   ws.onopen = () => {
     connected = true;
-    setStatus("Connected — receiving live ticks", true);
-
-    const symbol = $("symbol").value;
-
-    ws.send(JSON.stringify({
-      ticks_history: symbol,
-      count: 250,
-      end: "latest",
-      style: "ticks"
-    }));
-
-    ws.send(JSON.stringify({
-      ticks: symbol,
-      subscribe: 1
-    }));
+    setStatus("Connected. Authorizing your account...");
+    // Token is sent only over the encrypted WebSocket connection.
+    ws.send(JSON.stringify({ authorize: token }));
   };
 
   ws.onmessage = event => {
     let data;
-
     try {
       data = JSON.parse(event.data);
     } catch {
-      setStatus("Error: Unable to read the server response.");
+      setStatus("Connection error: the server response could not be read.");
       return;
     }
 
     if (data.error) {
-      setStatus("Connection Error: " + data.error.message);
+      const message = data.error.message || "Unknown API error.";
+      if (data.msg_type === "authorize" || !authorized) {
+        setStatus("Authorization failed: " + message);
+        $("authState").textContent = "Authorization failed";
+        $("connect").disabled = false;
+      } else {
+        setStatus("Deriv API error: " + message, connected);
+      }
+      return;
+    }
+
+    if (data.msg_type === "authorize" && data.authorize) {
+      const account = data.authorize;
+      const isVirtual = account.is_virtual === true || account.is_virtual === 1;
+
+      if (!isVirtual) {
+        setAccountStatus(
+          "Connected, but not authorized for this app",
+          "Real account detected",
+          account.loginid || "—",
+          account.currency || "—",
+          "Hidden"
+        );
+        setStatus("This app is configured for demo accounts only. Connect a demo account.");
+        $("apiToken").value = "";
+        $("connect").disabled = false;
+        if (ws) ws.close();
+        connected = false;
+        authorized = false;
+        demoVerified = false;
+        return;
+      }
+
+      authorized = true;
+      demoVerified = true;
+      $("apiToken").value = "";
+      setAccountStatus(
+        "Authorized",
+        "Demo account verified",
+        account.loginid || "Demo account",
+        account.currency || "—",
+        "Loading..."
+      );
+      $("connect").disabled = false;
+      $("disconnect").disabled = false;
+      $("start").disabled = false;
+      $("stop").disabled = false;
+      setStatus("Demo account authorized. Loading balance and market data...", true);
+
+      if (account.balance !== undefined) {
+        $("balance").textContent = `${account.balance} ${account.currency || ""}`.trim();
+      }
+
+      const symbol = $("symbol").value;
+      ws.send(JSON.stringify({
+        ticks_history: symbol,
+        count: 250,
+        end: "latest",
+        style: "ticks"
+      }));
+      ws.send(JSON.stringify({
+        ticks: symbol,
+        subscribe: 1
+      }));
+      ws.send(JSON.stringify({
+        balance: 1,
+        subscribe: 1
+      }));
+      return;
+    }
+
+    if (data.msg_type === "balance" && data.balance) {
+      const b = data.balance;
+      balanceSubscriptionId = data.subscription?.id || balanceSubscriptionId;
+      $("balance").textContent = `${b.balance} ${b.currency || ""}`.trim();
       return;
     }
 
@@ -238,9 +302,13 @@ function connect() {
         .map(getDigit)
         .filter(digit => digit !== null)
         .slice(-250);
+      if (authorized && demoVerified) {
+        setStatus("Demo account connected. Receiving live market ticks.", true);
+      }
+      return;
     }
 
-    if (data.msg_type === "tick") {
+    if (data.msg_type === "tick" && data.tick) {
       const digit = getDigit(data.tick.quote);
       if (digit !== null) onTick(digit);
     }
@@ -248,12 +316,35 @@ function connect() {
 
   ws.onclose = () => {
     connected = false;
+    running = false;
+    resetAccountStatus();
+    $("connect").disabled = false;
     setStatus("Disconnected from Deriv.");
   };
 
   ws.onerror = () => {
-    setStatus("Connection Error: Check your internet connection.");
+    setStatus("Connection error. Check your internet connection and API token permissions.");
+    $("connect").disabled = false;
   };
+}
+
+function disconnect() {
+  running = false;
+  pending = null;
+  if (ws && ws.readyState !== WebSocket.CLOSED) {
+    try {
+      if (balanceSubscriptionId) {
+        ws.send(JSON.stringify({ forget: balanceSubscriptionId }));
+      }
+    } catch {}
+    ws.close();
+  }
+  ws = null;
+  connected = false;
+  resetAccountStatus();
+  $("connect").disabled = false;
+  clearSignal();
+  setStatus("Account disconnected.");
 }
 
 function analyse(history) {
@@ -268,26 +359,18 @@ function analyse(history) {
     const age = history.length - 1 - i;
     frequency[history[i]] += Math.exp(-age / 45);
   }
-
-  for (const digit of history.slice(-30)) {
-    recent[digit]++;
-  }
+  for (const digit of history.slice(-30)) recent[digit]++;
 
   let total = frequency.reduce((sum, value) => sum + value, 0);
   const frequencyProbability = frequency.map(value => value / total);
   const recentProbability = recent.map(value => value / 30);
 
   for (let i = Math.max(1, history.length - 80); i < history.length; i++) {
-    if (history[i - 1] === history[history.length - 1]) {
-      transitions[history[i]]++;
-    }
+    if (history[i - 1] === history[history.length - 1]) transitions[history[i]]++;
   }
 
   total = transitions.reduce((sum, value) => sum + value, 0);
-
-  const transitionProbability = transitions.map(
-    value => total ? value / total : 0.1
-  );
+  const transitionProbability = transitions.map(value => total ? value / total : 0.1);
 
   const scores = Array.from({ length: 10 }, (_, digit) =>
     0.5 * frequencyProbability[digit] +
@@ -295,10 +378,8 @@ function analyse(history) {
     0.2 * transitionProbability[digit]
   );
 
-  const ranking = scores
-    .map((value, digit) => ({ value, digit }))
+  const ranking = scores.map((value, digit) => ({ value, digit }))
     .sort((a, b) => b.value - a.value);
-
   const bestDigit = ranking[0].digit;
   const edge = ranking[0].value - ranking[1].value;
 
@@ -309,10 +390,7 @@ function analyse(history) {
 
   const confidence = Math.round(Math.max(
     50,
-    Math.min(
-      95,
-      50 + (Math.max(...frequencyProbability) - 0.1) * 180 + edge * 170
-    )
+    Math.min(95, 50 + (Math.max(...frequencyProbability) - 0.1) * 180 + edge * 170)
   ));
 
   const agrees =
@@ -347,7 +425,6 @@ function onTick(digit) {
       $("signal").textContent = "MATCH — LOSS";
       $("reason").textContent = `The next market tick was ${digit}.`;
     }
-
     pending = null;
     updateStats();
   }
@@ -355,9 +432,7 @@ function onTick(digit) {
   ticks.push(digit);
   if (ticks.length > 250) ticks.shift();
 
-  if (!running || pending !== null || ticks.length - lastSignalAt < 4) {
-    return;
-  }
+  if (!running || pending !== null || ticks.length - lastSignalAt < 4) return;
 
   const result = analyse(ticks);
   if (!result) return;
@@ -374,7 +449,6 @@ function onTick(digit) {
   $("digit").textContent = result.digit;
   $("signal").textContent = "MATCH SIGNAL";
   $("reason").textContent = result.reason;
-
   pending = result.digit;
   lastSignalAt = ticks.length;
   trades++;
@@ -382,27 +456,22 @@ function onTick(digit) {
 }
 
 $("connect").addEventListener("click", connect);
+$("disconnect").addEventListener("click", disconnect);
 
 $("start").addEventListener("click", () => {
-  running = true;
-
-  if (!connected) {
-    connect();
-    setStatus("Starting scanner — connecting to Deriv...");
-  } else {
-    setStatus("Scanner Running — receiving live ticks", true);
+  if (!authorized || !demoVerified || !connected) {
+    setStatus("Connect and authorize a demo account before starting the scanner.");
+    return;
   }
+  running = true;
+  setStatus("Scanner running — demo account authorized, live ticks received.", true);
 });
 
 $("stop").addEventListener("click", () => {
   running = false;
   pending = null;
   clearSignal();
-
-  setStatus(
-    connected ? "Connected — scanner stopped." : "Not connected.",
-    connected
-  );
+  setStatus(authorized ? "Demo account connected — scanner stopped." : "Not connected.");
 });
 
 $("symbol").addEventListener("change", () => {
@@ -411,16 +480,24 @@ $("symbol").addEventListener("change", () => {
   lastSignalAt = -999;
   clearSignal();
 
-  if (ws && ws.readyState !== WebSocket.CLOSED) {
-    ws.close();
+  if (!authorized || !connected || !ws || ws.readyState !== WebSocket.OPEN) {
+    setStatus("Market selected. Connect your demo account to receive live ticks.");
+    return;
   }
 
-  connected = false;
-
-  // Wait until the previous connection closes before reconnecting.
-  setTimeout(connect, 500);
+  setStatus("Changing market subscription...", true);
+  ws.send(JSON.stringify({ forget_all: "ticks" }));
+  const symbol = $("symbol").value;
+  ws.send(JSON.stringify({
+    ticks_history: symbol,
+    count: 250,
+    end: "latest",
+    style: "ticks"
+  }));
+  ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
 });
 
+resetAccountStatus();
 clearSignal();
 </script>
 </body>
