@@ -37,6 +37,19 @@
     <div class="pill">Signal Dashboard</div>
   </header>
 
+
+
+  <section class="box" style="margin-bottom:20px;min-height:110px">
+    <div class="label">Account Balance</div>
+    <div class="value" id="balance">—</div>
+  </section>
+
+  <section class="card" style="margin-bottom:20px">
+    <label class="label" for="stake">Stake Amount</label>
+    <input id="stake" type="number" min="0.35" step="0.01" value="0.50" inputmode="decimal" aria-label="Enter your stake amount" placeholder="Enter stake amount">
+    <div class="note">Enter any stake amount from 0.35 upward. This setting is currently for reference only; this version does not place real or demo trades.</div>
+  </section>
+
   <section class="grid">
     <div class="box"><div class="label">Target Digit</div><div class="value" id="digit">—</div></div>
     <div class="box"><div class="label">Confidence</div><div class="value" id="confidence">—%</div></div>
@@ -49,8 +62,8 @@
   </section>
 
   <div class="run-actions">
-    <button class="start" id="start" disabled>START</button>
-    <button class="stop" id="stop" disabled>STOP</button>
+    <button class="start" id="start" aria-label="Start scanner" title="Start">▶</button>
+    <button class="stop" id="stop" aria-label="Stop scanner" title="Stop" disabled>■</button>
   </div>
 
   <section class="card" style="margin-top:28px">
@@ -71,21 +84,10 @@
       <option value="R_75">Volatility 75</option>
       <option value="R_50">Volatility 50</option>
     </select>
+    <button class="secondary" id="refresh" style="width:100%;margin-top:12px" disabled>↻ REFRESH</button>
     <div class="note">Live market ticks are analyzed and each signal is paper-tested against the next tick. Wins and losses are simulated signal outcomes, not trading profits. Confidence is an analysis filter, not a verified probability of winning.</div>
   </section>
 
-  <details class="card" style="margin-top:24px">
-    <summary style="cursor:pointer;color:var(--muted);font-size:16px;font-weight:700">Account status and details</summary>
-    <div class="account-state" style="margin-top:18px">
-      <div class="account-row"><span>Authorization</span><span id="authState">Not authorized</span></div>
-      <div class="account-row"><span>Account Type</span><span id="accountType">Demo account required</span></div>
-      <div class="account-row"><span>Account ID</span><span id="accountId">—</span></div>
-      <div class="account-row"><span>Currency</span><span id="currency">—</span></div>
-      <div class="account-row"><span>Balance</span><span id="balance">—</span></div>
-    </div>
-    <div class="note">Account details are retrieved from Deriv. This app does not place trades.</div>
-    <button class="secondary" id="dashboardDisconnect" style="width:100%;margin-top:16px">DISCONNECT ACCOUNT</button>
-  </details>
   </div><!-- /signalDashboard: shown only after successful demo authorization -->
 </div>
 
@@ -101,8 +103,8 @@ let connected = false;
 let authorized = false;
 let demoVerified = false;
 let ticks = [];
-let pending = null;
-let lastSignalAt = -999;
+let pending = [];
+let ticksSinceAnalysis = 0;
 let wins = 0, losses = 0, trades = 0;
 let userRequestedDisconnect = false;
 let lastConnectionError = "";
@@ -114,20 +116,23 @@ let historyRequestPending = false;
 const $ = id => document.getElementById(id);
 
 function setStatus(message, isLive = false) {
-  $("status").textContent = message;
-  $("dot").className = "dot" + (isLive ? " live" : "");
+  if ($("status")) $("status").textContent = message;
+  if ($("dot")) $("dot").className = "dot" + (isLive ? " live" : "");
+  if ($("dashboardStatus")) $("dashboardStatus").textContent = message;
+  if ($("dashboardDot")) $("dashboardDot").className = "dot" + (isLive ? " live" : "");
 }
 
 function setAccountStatus(auth, type, id, currency, balance) {
-  $("authState").textContent = auth;
-  $("accountType").textContent = type;
-  $("accountId").textContent = id;
-  $("currency").textContent = currency;
-  $("balance").textContent = balance;
+  if ($("authState")) $("authState").textContent = auth;
+  if ($("accountType")) $("accountType").textContent = type;
+  if ($("accountId")) $("accountId").textContent = id;
+  if ($("currency")) $("currency").textContent = currency;
+  if ($("balance")) $("balance").textContent = balance;
 }
 
 function resetAccountStatus() {
   setAccountStatus("Not authorized", "Demo account required", "—", "—", "—");
+  if ($("balance")) $("balance").textContent = "—";
   authorized = false;
   demoVerified = false;
   activeAccount = null;
@@ -135,6 +140,7 @@ function resetAccountStatus() {
   $("connectionPanel").classList.remove("hidden");
   $("start").disabled = true;
   $("stop").disabled = true;
+  if ($("refresh")) $("refresh").disabled = true;
   $("disconnect").disabled = true;
 }
 
@@ -194,7 +200,7 @@ async function connect() {
   authorized = false;
   demoVerified = false;
   ticks = [];
-  pending = null;
+  pending = [];
   historyRequestPending = false;
   resetAccountStatus();
   $("connect").disabled = true;
@@ -217,21 +223,27 @@ async function connect() {
     }
 
     const data = payload?.data;
+    // Deriv may return either one account object or an array, depending on response/version.
     let accounts = Array.isArray(data) ? data
       : Array.isArray(data?.accounts) ? data.accounts
+      : Array.isArray(data?.items) ? data.items
       : Array.isArray(payload?.accounts) ? payload.accounts
-      : Array.isArray(data?.items) ? data.items : [];
+      : (data && typeof data === "object" && (data.account_id || data.id || data.loginid)) ? [data]
+      : [];
 
     const demoAccount = accounts.find(a => {
-      const type = String(a?.account_type ?? a?.type ?? a?.accountType ?? "").toLowerCase();
-      return type.includes("demo") || type.includes("virtual") || a?.is_virtual === true || a?.is_virtual === 1;
+      const type = String(a?.account_type ?? a?.accountType ?? a?.type ?? "").toLowerCase();
+      const group = String(a?.group ?? "").toLowerCase();
+      const status = String(a?.status ?? "").toLowerCase();
+      return type.includes("demo") || type.includes("virtual") || group.includes("demo") ||
+        a?.is_virtual === true || a?.is_virtual === 1 || status === "demo";
     });
 
     if (!demoAccount) {
       const realFound = accounts.length > 0;
       throw new Error(realFound
         ? "Deriv authorized the token, but no demo Options account was returned. Check that you have a demo account and the required API scope."
-        : "Deriv authorized the request, but returned no demo Options account. Confirm this token is a Personal Access Token (PAT) and has the required API scope.");
+        : "Deriv returned no account records. Check that your PAT is valid, the App ID belongs to the registered Deriv app, and the token has the trade scope. If this token is for the older Deriv API, it may not work with this new Options API.");
     }
 
     activeAccount = demoAccount;
@@ -258,7 +270,7 @@ async function connect() {
     const msg = error?.message || "Unknown connection error.";
     lastConnectionError = msg;
     setAccountStatus("Authorization failed", "Demo account required", "—", "—", "—");
-    setStatus("Connection failed: " + msg);
+    setStatus("Connection failed: " + msg + " — check App ID, PAT, and the token's trade scope.");
   }
 }
 
@@ -279,6 +291,7 @@ function connectPublicMarketFeed() {
     $("start").disabled = false;
     $("stop").disabled = false;
     setStatus("Demo account verified. Loading live market ticks...", true);
+    $("refresh").disabled = false;
     const symbol = $("symbol").value;
     historyRequestPending = true;
     ws.send(JSON.stringify({ ticks_history: symbol, count: 250, end: "latest", style: "ticks" }));
@@ -318,6 +331,7 @@ function connectPublicMarketFeed() {
     running = false;
     $("start").disabled = true;
     $("stop").disabled = true;
+    $("refresh").disabled = true;
     if (userRequestedDisconnect) {
       setStatus("Disconnected from Deriv.");
     } else {
@@ -337,7 +351,7 @@ function connectPublicMarketFeed() {
 function disconnect() {
   userRequestedDisconnect = true;
   running = false;
-  pending = null;
+  pending = [];
   activeToken = "";
   if (ws && ws.readyState !== WebSocket.CLOSED) {
     try { ws.close(); } catch {}
@@ -351,22 +365,22 @@ function disconnect() {
 }
 
 function analyse(history) {
-  if (history.length < 100) return null;
+  if (history.length < 40) return null;
 
   const frequency = Array(10).fill(0);
   const recent = Array(10).fill(0);
   const transitions = Array(10).fill(0);
-  const from = Math.max(0, history.length - 120);
+  const from = Math.max(0, history.length - 100);
 
   for (let i = from; i < history.length; i++) {
     const age = history.length - 1 - i;
     frequency[history[i]] += Math.exp(-age / 45);
   }
-  for (const digit of history.slice(-30)) recent[digit]++;
+  for (const digit of history.slice(-40)) recent[digit]++;
 
   let total = frequency.reduce((sum, value) => sum + value, 0);
   const frequencyProbability = frequency.map(value => value / total);
-  const recentProbability = recent.map(value => value / 30);
+  const recentProbability = recent.map(value => value / Math.min(40, history.length));
 
   for (let i = Math.max(1, history.length - 80); i < history.length; i++) {
     if (history[i - 1] === history[history.length - 1]) transitions[history[i]]++;
@@ -376,9 +390,9 @@ function analyse(history) {
   const transitionProbability = transitions.map(value => total ? value / total : 0.1);
 
   const scores = Array.from({ length: 10 }, (_, digit) =>
-    0.5 * frequencyProbability[digit] +
-    0.3 * recentProbability[digit] +
-    0.2 * transitionProbability[digit]
+    0.45 * frequencyProbability[digit] +
+    0.40 * recentProbability[digit] +
+    0.15 * transitionProbability[digit]
   );
 
   const ranking = scores.map((value, digit) => ({ value, digit }))
@@ -397,63 +411,62 @@ function analyse(history) {
   ));
 
   const agrees =
-    rankOf(frequencyProbability, bestDigit) <= 1 &&
-    rankOf(recentProbability, bestDigit) <= 1 &&
-    rankOf(transitionProbability, bestDigit) <= 2;
+    rankOf(frequencyProbability, bestDigit) <= 3 &&
+    rankOf(recentProbability, bestDigit) <= 3 &&
+    (total === 0 || rankOf(transitionProbability, bestDigit) <= 5);
 
-  if (!agrees || edge < 0.035 || confidence < 67) {
-    return {
-      wait: true,
-      confidence,
-      reason: `Weak agreement — score difference: ${(edge * 100).toFixed(1)}%.`
-    };
-  }
-
+  // Emit a candidate after each 5-tick analysis cycle once enough history exists.
+  // This is a heuristic pattern, not a reliable prediction of a random digit.
+  const quality = agrees && edge >= 0.008 && confidence >= 55 ? "Pattern checks agree" : "Weak pattern — use caution";
   return {
     wait: false,
     digit: bestDigit,
     confidence,
-    reason: `Analysis filters passed — score difference: ${(edge * 100).toFixed(1)}%.`
+    reason: `${quality}. Candidate digit ${bestDigit}; score difference: ${(edge * 100).toFixed(1)}%.`
   };
 }
 
 function onTick(digit) {
-  if (pending !== null) {
-    if (digit === pending) {
-      wins++;
-      $("signal").textContent = "MATCH — WIN";
-      $("reason").textContent = "The next market tick matched the target digit.";
+  // Evaluate every active 5-tick paper-test independently, so a new signal
+  // can still be issued at each 5-tick boundary.
+  const stillPending = [];
+  for (const item of pending) {
+    item.ticksRemaining--;
+    if (item.ticksRemaining <= 0) {
+      if (digit === item.digit) {
+        wins++;
+        $("signal").textContent = "MATCH — WIN";
+        $("reason").textContent = `A 5-tick test matched target ${item.digit}.`;
+      } else {
+        losses++;
+        $("signal").textContent = "MATCH — LOSS";
+        $("reason").textContent = `A 5-tick test ended on ${digit}; target was ${item.digit}.`;
+      }
     } else {
-      losses++;
-      $("signal").textContent = "MATCH — LOSS";
-      $("reason").textContent = `The next market tick was ${digit}.`;
+      stillPending.push(item);
     }
-    pending = null;
-    updateStats();
   }
+  pending = stillPending;
 
   ticks.push(digit);
   if (ticks.length > 250) ticks.shift();
 
-  if (!running || pending !== null || ticks.length - lastSignalAt < 4) return;
+  ticksSinceAnalysis++;
+  if (!running || ticksSinceAnalysis < 5) return;
+  ticksSinceAnalysis = 0;
 
   const result = analyse(ticks);
-  if (!result) return;
-
-  $("confidence").textContent = result.confidence + "%";
-
-  if (result.wait) {
-    $("digit").textContent = "—";
-    $("signal").textContent = "WAITING FOR SIGNAL";
-    $("reason").textContent = result.reason;
+  if (!result) {
+    $("signal").textContent = "COLLECTING DATA";
+    $("reason").textContent = `Need at least 40 live ticks; currently ${ticks.length}.`;
     return;
   }
 
+  $("confidence").textContent = result.confidence + "%";
   $("digit").textContent = result.digit;
   $("signal").textContent = "MATCH SIGNAL";
-  $("reason").textContent = result.reason;
-  pending = result.digit;
-  lastSignalAt = ticks.length;
+  $("reason").textContent = result.reason + " Paper-tested over the next 5 ticks.";
+  pending.push({ digit: result.digit, ticksRemaining: 5 });
   trades++;
   updateStats();
 }
@@ -468,20 +481,39 @@ $("start").addEventListener("click", () => {
     return;
   }
   running = true;
-  setStatus("Scanner running — demo account verified, live ticks received.", true);
+  ticksSinceAnalysis = 0;
+  setStatus("Scanner running — analyzing after every 5 new live ticks.", true);
 });
 
 $("stop").addEventListener("click", () => {
   running = false;
-  pending = null;
+  pending = [];
+  ticksSinceAnalysis = 0;
   clearSignal();
   setStatus(authorized ? "Demo account verified — scanner stopped." : "Not connected.");
 });
 
+$("refresh").addEventListener("click", () => {
+  if (!authorized || !connected || !ws || ws.readyState !== WebSocket.OPEN) {
+    setStatus("Connect to Deriv before refreshing market data.");
+    return;
+  }
+  ticks = [];
+  pending = [];
+  ticksSinceAnalysis = 0;
+  clearSignal();
+  setStatus("Refreshing market history...", true);
+  ws.send(JSON.stringify({ forget_all: "ticks" }));
+  const symbol = $("symbol").value;
+  historyRequestPending = true;
+  ws.send(JSON.stringify({ ticks_history: symbol, count: 250, end: "latest", style: "ticks" }));
+  ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
+});
+
 $("symbol").addEventListener("change", () => {
   ticks = [];
-  pending = null;
-  lastSignalAt = -999;
+  pending = [];
+  ticksSinceAnalysis = 0;
   clearSignal();
 
   if (!authorized || !connected || !ws || ws.readyState !== WebSocket.OPEN) {
