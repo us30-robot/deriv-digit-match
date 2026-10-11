@@ -62,7 +62,7 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
     </div>
     <div>
       <label class="label" for="minConfidence">Min confidence</label>
-      <input id="minConfidence" type="number" min="50" max="95" step="1" value="65">
+      <input id="minConfidence" type="number" min="50" max="95" step="1" value="55">
     </div>
   </div>
 
@@ -636,7 +636,7 @@ function analyse(history) {
     digit,
     confidence,
     edge,
-    strong: agrees && edge >= 0.015 && confidence >= Number($("minConfidence").value || 65),
+    strong: agrees && edge >= 0.006 && confidence >= Number($("minConfidence").value || 55),
     reason: agrees ? "Pattern checks agree." : "Weak pattern; waiting for a cleaner setup."
   };
 }
@@ -659,7 +659,7 @@ function start() {
 
   running = true;
   $("signal").textContent = "SCANNING";
-  $("reason").textContent = "Scanning all supported Volatility Indices. Next signal check in up to 5 seconds.";
+  $("reason").textContent = "Scanning all supported Volatility Indices. A new entry is evaluated every 5 seconds.";
   setStatus("AUTO TRADING ON — demo only. Market selection is automatic.", true);
 
   if (signalTimer) clearInterval(signalTimer);
