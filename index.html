@@ -153,9 +153,7 @@ let connected = false;
 let running = false;
 const AUTO_MARKETS = [
   "1HZ10V","1HZ25V","1HZ50V","1HZ75V","1HZ100V",
-  "1HZ150V","1HZ200V","1HZ250V","1HZ300V","1HZ400V","1HZ500V",
-  "R_10","R_25","R_50","R_75","R_100",
-  "R_150","R_200","R_250","R_300","R_400","R_500"
+  "R_10","R_25","R_50","R_75","R_100"
 ];
 const MARKET_NAMES = {
   "1HZ10V": "Volatility 10 (1s)",
@@ -189,6 +187,9 @@ let activeContractId = null;
 let wins = 0, losses = 0, trades = 0;
 let moneyWon = 0, moneyLost = 0;
 let reqId = 100;
+const unsupportedMarkets = new Set();
+let lastEntrySignature = "";
+let lastEntryAt = 0;
 
 const $ = id => document.getElementById(id);
 const nextReq = () => ++reqId;
@@ -362,6 +363,9 @@ async function connect() {
 }
 
 function subscribeMarket() {
+  unsupportedMarkets.clear();
+  lastEntrySignature = "";
+  lastEntryAt = 0;
   marketHistories = Object.fromEntries(AUTO_MARKETS.map(s => [s, []]));
   clearSignal();
 
@@ -394,12 +398,18 @@ function marketLabel(symbol) {
 
 function evaluateBestMarket() {
   const candidates = [];
+  const now = Date.now();
 
   for (const symbol of AUTO_MARKETS) {
+    if (unsupportedMarkets.has(symbol)) continue;
     const history = marketHistories[symbol] || [];
     const result = analyse(history);
     if (!result) continue;
-    candidates.push({ symbol, result, score: result.confidence + result.edge * 1000 });
+    const signature = symbol + ":" + result.digit;
+    // Avoid immediately repeating the exact same market+digit signal.
+    const repeated = signature === lastEntrySignature && (now - lastEntryAt) < 30000;
+    const repeatPenalty = repeated ? 35 : 0;
+    candidates.push({ symbol, result, score: result.confidence + result.edge * 1000 - repeatPenalty });
   }
 
   candidates.sort((a,b) => b.score - a.score);
@@ -449,6 +459,9 @@ function requestSignal() {
     return;
   }
 
+  lastEntrySignature = symbol + ":" + result.digit;
+  lastEntryAt = Date.now();
+
   send({
     proposal: 1,
     amount: stake,
@@ -469,8 +482,18 @@ function handleMessage(event) {
 
   if (d.error || d.errors) {
     const message = errText(d);
+    const requestedSymbol = d.echo_req?.underlying_symbol;
+    const assetUnavailable = /trading is not offered|not offered for this asset|not available|unsupported|does not offer/i.test(message);
+
     if (d.echo_req?.proposal || d.msg_type === "proposal") proposalPending = false;
-    setStatus("Deriv: " + message, connected);
+
+    if (assetUnavailable && requestedSymbol && AUTO_MARKETS.includes(requestedSymbol)) {
+      unsupportedMarkets.add(requestedSymbol);
+      setStatus("Skipping " + marketLabel(requestedSymbol) + ": DIGITMATCH is not offered. Trying another index.", connected);
+      if (running && !activeContractId) setTimeout(requestSignal, 100);
+    } else {
+      setStatus("Deriv: " + message, connected);
+    }
     return;
   }
 
