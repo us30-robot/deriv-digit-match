@@ -12,7 +12,7 @@
 button{border:0;border-radius:40px;padding:15px 16px;font-size:18px;font-weight:800;cursor:pointer;min-height:58px}button:disabled{opacity:.45;cursor:not-allowed}.connect,.start{background:var(--green);color:white}.stop{background:transparent;color:var(--red);border:2px solid #3b4355}.secondary{background:#263249;color:#fff;border:1px solid var(--line)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.box{min-height:120px}.label{display:block;color:var(--muted);font-size:14px;font-weight:700;text-transform:uppercase}.value{font-size:38px;font-weight:800;margin-top:14px;color:var(--bright)}#digit{color:#fff}#confidence{color:var(--bright)}
 .signal{text-align:center;min-height:160px;display:flex;flex-direction:column;justify-content:center;gap:12px}.signal strong{font-size:29px;color:var(--amber)}.signal small{font-size:15px;color:var(--muted);line-height:1.5}
-.run-actions{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center}.stat{background:#10192b;border-radius:16px;padding:16px 5px}.stat b{font-size:30px}.stat:first-child b{color:var(--bright)}.stat:nth-child(2) b{color:var(--red)}.stat span{display:block;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;margin-top:7px}
+.run-actions{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;text-align:center}.stat{background:#10192b;border-radius:16px;padding:16px 5px}.stat b{font-size:30px}.stat:first-child b{color:var(--bright)}.stat:nth-child(2) b{color:var(--red)}.stat:nth-child(3) b{color:var(--bright)}.stat:nth-child(4) b{color:var(--red)}.stat span{display:block;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;margin-top:7px}
 input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;padding:13px;border-radius:12px;margin-top:7px;font-size:16px}input:focus,select:focus{outline:2px solid #20d36b55}.settings{border-top:1px solid var(--line);padding-top:12px;margin-top:14px}.settings summary{color:var(--muted);cursor:pointer}.note{font-size:12px;color:var(--muted);line-height:1.55;margin-top:10px}.status{font-size:13px;color:var(--muted);line-height:1.5;margin-top:14px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#777;margin-right:7px}.dot.live{background:var(--bright)}
 .hidden{display:none!important}.trade-state{display:flex;justify-content:space-between;gap:10px;background:#0d1627;border-radius:14px;padding:12px;margin-top:14px;font-size:13px}.trade-state span:last-child{font-weight:800;color:var(--bright);text-align:right}.warning{border:1px solid #6e5717;background:#2c260f;color:#f4d56a;border-radius:14px;padding:12px;font-size:12px;line-height:1.5;margin-top:12px}
 @media(max-width:520px){.wrap{padding:20px 15px}.brand h1{font-size:28px}.grid{gap:10px}.box{padding:17px}.value{font-size:34px}button{font-size:16px}.signal strong{font-size:25px}}
@@ -62,7 +62,7 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
     </div>
     <div>
       <label class="label" for="minConfidence">Min confidence</label>
-      <input id="minConfidence" type="number" min="50" max="95" step="1" value="55">
+      <input id="minConfidence" type="number" min="50" max="95" step="1" value="65">
     </div>
   </div>
 
@@ -84,7 +84,7 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
     </div>
   </div>
 
-  <div class="note">The robot scans 5 supported 1-second Volatility markets and automatically selects the strongest setup. It checks for a new signal every 5 seconds. Demo-only implementation; one contract at a time is allowed.</div>
+  <div class="note">The robot scans supported Volatility Indices and automatically selects only a strong qualifying setup. It checks for a new signal every 5 seconds. Demo-only implementation; one contract at a time is allowed.</div>
 </section>
 
 <section class="grid">
@@ -107,6 +107,8 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
   <div class="stats">
     <div class="stat"><b id="wins">0</b><span>Wins</span></div>
     <div class="stat"><b id="losses">0</b><span>Losses</span></div>
+    <div class="stat"><b id="wonMoney">+$0.00</b><span>Money Won</span></div>
+    <div class="stat"><b id="lostMoney">-$0.00</b><span>Money Lost</span></div>
     <div class="stat"><b id="trades">0</b><span>Trades</span></div>
   </div>
   <div class="trade-state"><span>Open contract</span><span id="openTrade">NONE</span></div>
@@ -116,7 +118,7 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
   <div class="label">Connection</div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="liveStatus">Not connected</span></div>
   <button class="secondary" id="refresh" style="width:100%;margin-top:12px" disabled>↻ REFRESH DATA</button>
-  <div class="note">The analysis is heuristic. The robot evaluates the best of 5 supported 1-second Volatility markets every 5 seconds. A high confidence score is not a guaranteed probability of winning.</div>
+  <div class="note">The analysis is heuristic. The robot scans supported Volatility Indices every 5 seconds and trades only when a setup passes the qualification rules. A high confidence score is not a guaranteed probability of winning.</div>
 </section>
 </div>
 </div>
@@ -149,13 +151,35 @@ let appId = "";
 let account = null;
 let connected = false;
 let running = false;
-const AUTO_MARKETS = ["1HZ100V","1HZ75V","1HZ50V","1HZ25V","1HZ10V"];
+const AUTO_MARKETS = [
+  "1HZ10V","1HZ25V","1HZ50V","1HZ75V","1HZ100V",
+  "1HZ150V","1HZ200V","1HZ250V","1HZ300V","1HZ400V","1HZ500V",
+  "R_10","R_25","R_50","R_75","R_100",
+  "R_150","R_200","R_250","R_300","R_400","R_500"
+];
 const MARKET_NAMES = {
-  "1HZ100V": "Volatility 100 (1s)",
-  "1HZ75V": "Volatility 75 (1s)",
-  "1HZ50V": "Volatility 50 (1s)",
+  "1HZ10V": "Volatility 10 (1s)",
   "1HZ25V": "Volatility 25 (1s)",
-  "1HZ10V": "Volatility 10 (1s)"
+  "1HZ50V": "Volatility 50 (1s)",
+  "1HZ75V": "Volatility 75 (1s)",
+  "1HZ100V": "Volatility 100 (1s)",
+  "1HZ150V": "Volatility 150 (1s)",
+  "1HZ200V": "Volatility 200 (1s)",
+  "1HZ250V": "Volatility 250 (1s)",
+  "1HZ300V": "Volatility 300 (1s)",
+  "1HZ400V": "Volatility 400 (1s)",
+  "1HZ500V": "Volatility 500 (1s)",
+  "R_10": "Volatility 10",
+  "R_25": "Volatility 25",
+  "R_50": "Volatility 50",
+  "R_75": "Volatility 75",
+  "R_100": "Volatility 100",
+  "R_150": "Volatility 150",
+  "R_200": "Volatility 200",
+  "R_250": "Volatility 250",
+  "R_300": "Volatility 300",
+  "R_400": "Volatility 400",
+  "R_500": "Volatility 500",
 };
 let marketHistories = {};
 let signalTimer = null;
@@ -163,6 +187,7 @@ let proposalPending = false;
 let selectedMarket = null;
 let activeContractId = null;
 let wins = 0, losses = 0, trades = 0;
+let moneyWon = 0, moneyLost = 0;
 let reqId = 100;
 
 const $ = id => document.getElementById(id);
@@ -195,8 +220,11 @@ function getDigit(quote) {
 
 function resetStats() {
   wins = losses = trades = 0;
+  moneyWon = moneyLost = 0;
   $("wins").textContent = "0";
   $("losses").textContent = "0";
+  $("wonMoney").textContent = "+$0.00";
+  $("lostMoney").textContent = "-$0.00";
   $("trades").textContent = "0";
 }
 
@@ -353,7 +381,7 @@ function subscribeMarket() {
     });
   });
 
-  setStatus("Scanning 5 Volatility markets. Signals refresh every 5 seconds.", true);
+  setStatus("Scanning all supported Volatility Indices. Signals refresh every 5 seconds.", true);
 }
 
 function marketFromMessage(d) {
@@ -392,7 +420,7 @@ function requestSignal() {
   const best = evaluateBestMarket();
   if (!best) {
     $("signal").textContent = "COLLECTING DATA";
-    $("reason").textContent = "Building history across the 5 auto-selected markets.";
+    $("reason").textContent = "Building history across the available Volatility Indices.";
     return;
   }
 
@@ -463,7 +491,7 @@ function handleMessage(event) {
         ? prices.map(getDigit).filter(x => x !== null).slice(-250)
         : [];
     }
-    setStatus("Live history loaded. Auto market selection is active; signals refresh every 5 seconds.", true);
+    setStatus("Live history loaded. Auto market selection is active across the supported Volatility Indices; signals refresh every 5 seconds.", true);
     return;
   }
 
@@ -531,20 +559,26 @@ function handleMessage(event) {
     if (activeContractId && Number(c.contract_id) !== Number(activeContractId)) return;
 
     if (c.is_sold || c.status === "won" || c.status === "lost") {
-      const won = c.status === "won" || Number(c.profit) > 0;
+      const profit = Number(c.profit);
+      const won = c.status === "won" || profit > 0;
+      const amount = Math.abs(Number.isFinite(profit) ? profit : 0);
 
       if (won) {
         wins++;
-        $("signal").textContent = "WIN ✓";
-        $("reason").textContent = "Demo contract settled as WIN.";
+        moneyWon += amount;
+        $("signal").textContent = "WIN ✓ +$" + amount.toFixed(2);
+        $("reason").textContent = "Demo contract settled as WIN. Profit: +$" + amount.toFixed(2);
       } else {
         losses++;
-        $("signal").textContent = "LOSS";
-        $("reason").textContent = "Demo contract settled as LOSS.";
+        moneyLost += amount;
+        $("signal").textContent = "LOSS -$" + amount.toFixed(2);
+        $("reason").textContent = "Demo contract settled as LOSS. Loss: -$" + amount.toFixed(2);
       }
 
       $("wins").textContent = wins;
       $("losses").textContent = losses;
+      $("wonMoney").textContent = "+$" + moneyWon.toFixed(2);
+      $("lostMoney").textContent = "-$" + moneyLost.toFixed(2);
       activeContractId = null;
       $("openTrade").textContent = "NONE";
     }
@@ -602,7 +636,7 @@ function analyse(history) {
     digit,
     confidence,
     edge,
-    strong: agrees && edge >= 0.008 && confidence >= Number($("minConfidence").value || 55),
+    strong: agrees && edge >= 0.015 && confidence >= Number($("minConfidence").value || 65),
     reason: agrees ? "Pattern checks agree." : "Weak pattern; waiting for a cleaner setup."
   };
 }
@@ -625,7 +659,7 @@ function start() {
 
   running = true;
   $("signal").textContent = "SCANNING";
-  $("reason").textContent = "Scanning 5 markets. Next signal check in up to 5 seconds.";
+  $("reason").textContent = "Scanning all supported Volatility Indices. Next signal check in up to 5 seconds.";
   setStatus("AUTO TRADING ON — demo only. Market selection is automatic.", true);
 
   if (signalTimer) clearInterval(signalTimer);
