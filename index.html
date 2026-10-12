@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Digit Match — Auto Demo Trader</title>
+<title>Digit Match 3 — Strategy Demo Trader</title>
 <style>
 :root{--bg:#080d1d;--card:#151f34;--line:#29354c;--text:#f4f7ff;--muted:#98a8c0;--green:#2f8a3d;--bright:#20d36b;--red:#ff6268;--amber:#ffbd20}
 *{box-sizing:border-box}html{background:var(--bg)}body{margin:0;background:linear-gradient(180deg,#0b1020,#070c1b);color:var(--text);font-family:Arial,Helvetica,sans-serif}.wrap{max-width:760px;margin:auto;padding:24px 20px 36px}
@@ -43,8 +43,8 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
 
 <div id="dashboard" class="hidden">
 <header class="brand">
-  <h1>Digit Match</h1>
-  <div class="subtitle">Automatic Demo Trader</div>
+  <h1>Digit Match 3</h1>
+  <div class="subtitle">Strategy-Based Automatic Demo Trader</div>
   <div class="pill">LIVE ANALYSIS + AUTO BUY</div>
 </header>
 
@@ -84,18 +84,29 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
     </div>
   </div>
 
-  <div class="note">The robot scans supported Volatility Indices and automatically selects only a strong qualifying setup. It checks for a new signal every 5 seconds. Demo-only implementation; one contract at a time is allowed.</div>
+  <div class="note">The robot scans supported Volatility Indices every 5 seconds. It enters DIGITMATCH 3 only when all strategy rules pass: digit 6 percentage is decreasing, digit 3 is above 9.5% and below 11%, digit 1 is stable, and the latest digit before entry is even.</div>
 </section>
 
 <section class="grid">
-  <div class="box"><div class="label">Target Digit</div><div class="value" id="digit">—</div></div>
-  <div class="box"><div class="label">Confidence</div><div class="value" id="confidence">—</div></div>
+  <div class="box"><div class="label">Target Digit</div><div class="value" id="digit">3</div></div>
+  <div class="box"><div class="label">Strategy Score</div><div class="value" id="confidence">—</div></div>
 </section>
 
 <section class="signal">
   <div class="label">Current Signal</div>
   <strong id="signal">WAITING</strong>
   <small id="reason">Collecting live tick history.</small>
+</section>
+
+<section class="card">
+  <div class="label">Digit 3 Strategy Rules</div>
+  <div class="note" style="margin-top:12px">
+    <b>6:</b> percentage must be decreasing ↓<br>
+    <b>3:</b> percentage must be &gt; 9.5% and &lt; 11%<br>
+    <b>1:</b> percentage must remain constant/stable<br>
+    <b>Triangle:</b> latest moving digit must come from an even digit<br>
+    <b>Entry:</b> DIGITMATCH 3 only when all four rules pass
+  </div>
 </section>
 
 <div class="run-actions">
@@ -118,7 +129,7 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
   <div class="label">Connection</div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="liveStatus">Not connected</span></div>
   <button class="secondary" id="refresh" style="width:100%;margin-top:12px" disabled>↻ REFRESH DATA</button>
-  <div class="note">The analysis is heuristic. The robot scans supported Volatility Indices every 5 seconds and trades only when a setup passes the qualification rules. A high confidence score is not a guaranteed probability of winning.</div>
+  <div class="note">Strategy rules are strict gates, not a guarantee of profit. Percentages are calculated from the live rolling digit history; “decreasing” compares the latest window with the previous window, “constant” uses a small stability tolerance, and the moving-triangle rule is represented by the latest observed digit being even.</div>
 </section>
 </div>
 </div>
@@ -180,7 +191,6 @@ const MARKET_NAMES = {
   "R_500": "Volatility 500",
 };
 let marketHistories = {};
-let signalTimer = null;
 let proposalPending = false;
 let selectedMarket = null;
 let activeContractId = null;
@@ -188,8 +198,6 @@ let wins = 0, losses = 0, trades = 0;
 let moneyWon = 0, moneyLost = 0;
 let reqId = 100;
 const unsupportedMarkets = new Set();
-let lastEntrySignature = "";
-let lastEntryAt = 0;
 
 const $ = id => document.getElementById(id);
 const nextReq = () => ++reqId;
@@ -231,10 +239,10 @@ function resetStats() {
 
 function clearSignal() {
   selectedMarket = null;
-  $("digit").textContent = "—";
+  $("digit").textContent = "3";
   $("confidence").textContent = "—";
   $("signal").textContent = "WAITING";
-  $("reason").textContent = "Collecting live tick history.";
+  $("reason").textContent = "Collecting live tick history for the Digit 3 strategy.";
 }
 
 function accountIsDemo(a) {
@@ -364,8 +372,6 @@ async function connect() {
 
 function subscribeMarket() {
   unsupportedMarkets.clear();
-  lastEntrySignature = "";
-  lastEntryAt = 0;
   marketHistories = Object.fromEntries(AUTO_MARKETS.map(s => [s, []]));
   clearSignal();
 
@@ -385,7 +391,7 @@ function subscribeMarket() {
     });
   });
 
-  setStatus("Scanning all supported Volatility Indices. Signals refresh every 5 seconds.", true);
+  setStatus("Scanning all supported Volatility Indices continuously for the Digit 3 strategy.", true);
 }
 
 function marketFromMessage(d) {
@@ -398,18 +404,19 @@ function marketLabel(symbol) {
 
 function evaluateBestMarket() {
   const candidates = [];
-  const now = Date.now();
 
   for (const symbol of AUTO_MARKETS) {
     if (unsupportedMarkets.has(symbol)) continue;
+
     const history = marketHistories[symbol] || [];
     const result = analyse(history);
     if (!result) continue;
-    const signature = symbol + ":" + result.digit;
-    // Avoid immediately repeating the exact same market+digit signal.
-    const repeated = signature === lastEntrySignature && (now - lastEntryAt) < 30000;
-    const repeatPenalty = repeated ? 35 : 0;
-    candidates.push({ symbol, result, score: result.confidence + result.edge * 1000 - repeatPenalty });
+
+    candidates.push({
+      symbol,
+      result,
+      score: result.score
+    });
   }
 
   candidates.sort((a,b) => b.score - a.score);
@@ -428,26 +435,29 @@ function requestSignal() {
   }
 
   const best = evaluateBestMarket();
+
   if (!best) {
     $("signal").textContent = "COLLECTING DATA";
-    $("reason").textContent = "Building history across the available Volatility Indices.";
+    $("reason").textContent = "Building the required rolling digit history.";
     return;
   }
 
   const { symbol, result } = best;
   selectedMarket = symbol;
-  $("digit").textContent = result.digit;
-  $("confidence").textContent = result.confidence + "%";
+  $("digit").textContent = "3";
+  $("confidence").textContent = result.score + "%";
 
   if (!result.strong) {
     $("signal").textContent = "WAIT";
-    $("reason").textContent = "Best market: " + marketLabel(symbol) + ". " + result.reason + " No trade placed.";
+    $("reason").textContent = marketLabel(symbol) + " — " + result.reason + " No trade placed.";
     return;
   }
 
   proposalPending = true;
   $("signal").textContent = "SIGNAL READY";
-  $("reason").textContent = "Auto-selected " + marketLabel(symbol) + " — digit " + result.digit + ". Requesting proposal...";
+  $("reason").textContent =
+    "All four Digit 3 strategy rules passed on " + marketLabel(symbol) +
+    ". Requesting DIGITMATCH 3 proposal now.";
 
   const stake = Number($("stake").value);
   const duration = Number($("duration").value);
@@ -459,16 +469,13 @@ function requestSignal() {
     return;
   }
 
-  lastEntrySignature = symbol + ":" + result.digit;
-  lastEntryAt = Date.now();
-
   send({
     proposal: 1,
     amount: stake,
     basis: "stake",
     contract_type: "DIGITMATCH",
     currency,
-    barrier: String(result.digit),
+    barrier: "3",
     duration,
     duration_unit: "t",
     underlying_symbol: symbol,
@@ -514,7 +521,7 @@ function handleMessage(event) {
         ? prices.map(getDigit).filter(x => x !== null).slice(-250)
         : [];
     }
-    setStatus("Live history loaded. Auto market selection is active across the supported Volatility Indices; signals refresh every 5 seconds.", true);
+    setStatus("Live history loaded. Digit 3 strategy monitoring is active across the supported Volatility Indices.", true);
     return;
   }
 
@@ -526,6 +533,9 @@ function handleMessage(event) {
       history.push(digit);
       if (history.length > 250) history.shift();
       marketHistories[symbol] = history;
+
+      // No timed entry rule: evaluate immediately whenever fresh market data arrives.
+      if (running && !activeContractId && !proposalPending) requestSignal();
     }
     return;
   }
@@ -610,57 +620,109 @@ function handleMessage(event) {
 }
 
 function analyse(history) {
-  if (history.length < 40) return null;
+  // DIGITMATCH 3 strategy:
+  // 1) Digit 6 percentage must be decreasing.
+  // 2) Digit 3 percentage must be > 9.5% and < 11%.
+  // 3) Digit 1 percentage must be constant/stable.
+  // 4) The moving triangle/trigger digit must come from any even digit.
+  //
+  // Percentages are measured from the latest 100 ticks versus the preceding 100 ticks.
+  if (history.length < 200) return null;
 
-  const freq = Array(10).fill(0);
-  const recent = Array(10).fill(0);
-  const transition = Array(10).fill(0);
-  const from = Math.max(0, history.length - 100);
+  const current = history.slice(-100);
+  const previous = history.slice(-200, -100);
 
-  for (let i = from; i < history.length; i++) {
-    const age = history.length - 1 - i;
-    freq[history[i]] += Math.exp(-age / 45);
+  const percentages = arr => {
+    const counts = Array(10).fill(0);
+    for (const d of arr) counts[d]++;
+    return counts.map(n => (n / arr.length) * 100);
+  };
+
+  const curPct = percentages(current);
+  const prevPct = percentages(previous);
+
+  // "Decreasing" means the current Digit 6 percentage is lower than the prior window.
+  const digit6Change = curPct[6] - prevPct[6];
+  const digit6Decreasing = digit6Change < 0;
+
+  // Strict bounds: 9.5% < Digit 3 < 11%.
+  const digit3InRange = curPct[3] > 9.5 && curPct[3] < 11;
+
+  // "Constant" is treated as unchanged when rounded to 2 decimal places.
+  // This avoids treating tiny floating-point differences as movement.
+  const d1Now = Number(curPct[1].toFixed(2));
+  const d1Prev = Number(prevPct[1].toFixed(2));
+  const digit1Constant = d1Now === d1Prev;
+  const d1Change = curPct[1] - prevPct[1];
+
+  // The moving triangle is represented by the newest observed digit.
+  // Entry is allowed only when that trigger digit is even: 0,2,4,6,8.
+  const lastDigit = history[history.length - 1];
+  const triangleFromEven = Number.isInteger(lastDigit) && lastDigit % 2 === 0;
+
+  const passed =
+    digit6Decreasing &&
+    digit3InRange &&
+    digit1Constant &&
+    triangleFromEven;
+
+  const passCount = [
+    digit6Decreasing,
+    digit3InRange,
+    digit1Constant,
+    triangleFromEven
+  ].filter(Boolean).length;
+
+  const score = Math.round((passCount / 4) * 100);
+
+  const ruleText =
+    "D6 " + curPct[6].toFixed(2) + "% " +
+      (digit6Decreasing ? "↓ PASS" : "NOT ↓") +
+    " | D3 " + curPct[3].toFixed(2) + "% " +
+      (digit3InRange ? "PASS" : "OUT") +
+    " | D1 " + curPct[1].toFixed(2) + "% " +
+      (digit1Constant ? "CONSTANT" : "MOVING") +
+    " | Triangle from " + lastDigit + " " +
+      (triangleFromEven ? "PASS" : "WAIT");
+
+  if (passed) {
+    return {
+      digit: 3,
+      score: 100,
+      strong: true,
+      reason: ruleText,
+      metrics: {
+        digit6Pct: curPct[6],
+        digit6Change,
+        digit3Pct: curPct[3],
+        digit1Pct: curPct[1],
+        digit1Change: d1Change,
+        lastDigit,
+        triangleFromEven
+      }
+    };
   }
-  history.slice(-40).forEach(d => recent[d]++);
 
-  for (let i = Math.max(1, history.length - 80); i < history.length; i++) {
-    if (history[i - 1] === history[history.length - 1]) transition[history[i]]++;
-  }
-
-  const fTotal = freq.reduce((a,b)=>a+b,0) || 1;
-  const rTotal = Math.min(40, history.length) || 1;
-  const tTotal = transition.reduce((a,b)=>a+b,0);
-
-  const fp = freq.map(x => x / fTotal);
-  const rp = recent.map(x => x / rTotal);
-  const tp = transition.map(x => tTotal ? x / tTotal : 0.1);
-
-  const scores = Array.from({length:10}, (_,d) =>
-    0.45*fp[d] + 0.40*rp[d] + 0.15*tp[d]
-  );
-
-  const ranking = scores.map((v,d)=>({v,d})).sort((a,b)=>b.v-a.v);
-  const digit = ranking[0].d;
-  const edge = ranking[0].v - ranking[1].v;
-
-  const rank = (arr,d) => arr.map((v,i)=>({v,i}))
-    .sort((a,b)=>b.v-a.v).findIndex(x=>x.i===d);
-
-  const confidence = Math.round(Math.max(50, Math.min(
-    95, 50 + (Math.max(...fp)-0.1)*180 + edge*170
-  )));
-
-  const agrees =
-    rank(fp,digit) <= 3 &&
-    rank(rp,digit) <= 3 &&
-    (!tTotal || rank(tp,digit) <= 5);
+  const missing = [];
+  if (!digit6Decreasing) missing.push("Digit 6 percentage decreasing");
+  if (!digit3InRange) missing.push("Digit 3 between 9.5% and 11%");
+  if (!digit1Constant) missing.push("Digit 1 constant");
+  if (!triangleFromEven) missing.push("triangle from an even digit");
 
   return {
-    digit,
-    confidence,
-    edge,
-    strong: agrees && edge >= 0.006 && confidence >= Number($("minConfidence").value || 55),
-    reason: agrees ? "Pattern checks agree." : "Weak pattern; waiting for a cleaner setup."
+    digit: 3,
+    score,
+    strong: false,
+    reason: "Waiting for: " + missing.join(", ") + ". " + ruleText,
+    metrics: {
+      digit6Pct: curPct[6],
+      digit6Change,
+      digit3Pct: curPct[3],
+      digit1Pct: curPct[1],
+      digit1Change: d1Change,
+      lastDigit,
+      triangleFromEven
+    }
   };
 }
 
@@ -682,17 +744,17 @@ function start() {
 
   running = true;
   $("signal").textContent = "SCANNING";
-  $("reason").textContent = "Scanning all supported Volatility Indices. A new entry is evaluated every 5 seconds.";
-  setStatus("AUTO TRADING ON — demo only. Market selection is automatic.", true);
+  $("reason").textContent =
+    "Continuously checking the four Digit 3 rules. Entry occurs only when all four pass.";
+  setStatus("AUTO TRADING ON — demo only. Waiting for a qualifying Digit 3 setup.", true);
 
-  if (signalTimer) clearInterval(signalTimer);
-  signalTimer = setInterval(requestSignal, 5000);
+  // No 5-second interval: evaluate immediately using the current histories.
+  requestSignal();
 }
 
 function stop() {
   running = false;
   proposalPending = false;
-  if (signalTimer) { clearInterval(signalTimer); signalTimer = null; }
   $("signal").textContent = activeContractId ? "TRADE OPEN" : "STOPPED";
   $("reason").textContent = activeContractId
     ? "New entries stopped. The open demo contract will settle normally."
@@ -703,7 +765,6 @@ function stop() {
 function disconnect() {
   running = false;
   proposalPending = false;
-  if (signalTimer) { clearInterval(signalTimer); signalTimer = null; }
   token = "";
 
   if (ws) {
