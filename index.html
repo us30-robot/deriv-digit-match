@@ -70,7 +70,7 @@ input,select{width:100%;background:#0b1222;color:#fff;border:1px solid #34405a;p
     <div>
       <label class="label" for="symbol">Market selection</label>
       <select id="symbol" disabled>
-        <option value="AUTO">AUTO — BEST SETUP</option>
+        <option value="1HZ100V">Volatility 100 (1s)</option>
       </select>
     </div>
     <div>
@@ -163,8 +163,7 @@ let account = null;
 let connected = false;
 let running = false;
 const AUTO_MARKETS = [
-  "1HZ10V","1HZ25V","1HZ50V","1HZ75V","1HZ100V",
-  "R_10","R_25","R_50","R_75","R_100"
+  "1HZ100V"
 ];
 const MARKET_NAMES = {
   "1HZ10V": "Volatility 10 (1s)",
@@ -391,7 +390,7 @@ function subscribeMarket() {
     });
   });
 
-  setStatus("Scanning all supported Volatility Indices continuously for the Digit 3 strategy.", true);
+  setStatus("Scanning Volatility 100 (1s) continuously for the Digit 3 strategy.", true);
 }
 
 function marketFromMessage(d) {
@@ -521,7 +520,7 @@ function handleMessage(event) {
         ? prices.map(getDigit).filter(x => x !== null).slice(-250)
         : [];
     }
-    setStatus("Live history loaded. Digit 3 strategy monitoring is active across the supported Volatility Indices.", true);
+    setStatus("Live history loaded. Digit 3 strategy monitoring is active on Volatility 100 (1s).", true);
     return;
   }
 
